@@ -56,6 +56,9 @@ def execute():
     p.add_argument('-c', '--continuous', type=int, default=0,
                    help='Run continuously and sleep these many'
                    'seconds between runs'),
+    p.add_argument('-u', '--updates-per-run', type=int,
+                   default=0,
+                   help='Overrides # of updates for this particular execution')
     args = p.parse_args()
     db = _get_db(args.dburl, create=False)
     if db is None:
@@ -64,12 +67,13 @@ def execute():
     metadoc = MetaDoc().load(db)
     c = 0
     while True:
-        new_metadoc = _update_docs(db, metadoc)
+        new_metadoc = _update_docs(db, metadoc, args.updates_per_run)
         if args.continuous <= 0:
             break
         c += 1
         print "Sleeping", args.continuous, "seconds before next run", c
         time.sleep(args.continuous)
+        print
     print "New state:"
     new_metadoc.pprint()
     exit(0)
@@ -110,7 +114,7 @@ class MetaDoc(dict):
         return cls(total=args.total,
                    size=args.size,
                    updates=min(args.updates_per_run, args.total),
-                   created=time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
+                   created=int(time.time()),
                    version=VERSION,
                    start=0,
                    last_updates=0,
@@ -156,6 +160,8 @@ class MetaDoc(dict):
                 v = "(%s items)" % len(v)
             elif k == 'last_ts':
                 v = "%s (%s)" % (v, _ts_to_iso(v))
+            elif k == 'created' and isinstance(v, int):
+                v = "%s (%s)" % (v, _ts_to_iso(v))
             print " .", str(k), ":", str(v)
 
 
@@ -186,12 +192,9 @@ def _batch_size(docsize):
     docsize. A simple guess-based interval
     table for now.
     """
-    table = [(0,   2e3,  2000),
-             (2e3, 1e4,  1000),
-             (1e4, 1e5,  200),
-             (1e5, 2e6,  10)]
-    for (lo, hi, bsize) in table:
-        if lo <= docsize < hi:
+    table = [(2e3, 2000), (1e4, 1000), (1e5, 200), (2e6, 10)]
+    for (limit, bsize) in table:
+        if docsize < limit:
             return bsize
     return 1
 
@@ -225,7 +228,7 @@ def _docrevs(db, *intervals):
                              startkey=interval[0],
                              endkey=interval[-1],
                              inclusive_end=True,
-                             batch=1000):
+                             batch=2000):
             revs[str(r.id)] = str(r.value['rev'])
     return revs
 
@@ -233,6 +236,7 @@ def _docrevs(db, *intervals):
 def _bulk_update(db, docrevs, data, ts, docids):
     """
     Update one batch using bulk docs updates. Return
+    number of successfully updated docs.
     """
     docs = []
     for _id in docids:
@@ -253,29 +257,32 @@ def _ts_to_iso(ts):
     return datetime.datetime.utcfromtimestamp(ts).isoformat()
 
 
-def _update_docs(db, metadoc):
+def _update_docs(db, metadoc, updates=0):
     """
     Main logic. Start at metadoc['start'] and
-    update next metadoc['updates'] documents. If needed
-    wrap around back to start. When done checkpoint
+    update next metadoc['updates'] documents (can be
+    overriden by optional updates parameters). If needed
+    wrap around back to start. When done, checkpoint
     meta document to db.
     """
     t0 = time.time()
     total = metadoc['total']
     size = metadoc['size']
-    updates = metadoc['updates']
+    updates = updates if updates else metadoc['updates']
     start = metadoc['start']
     batchsize = _batch_size(size)
     data = PATTERN * size
     int1, int2 = _intervals(start, updates, total)
     docint1, docint2 = [IDPAT % i for i in int1], [IDPAT % i for i in int2]
-    print "Updating docs. Configuration:"
-    metadoc.pprint()
+    print "Total docs:", total, " doc size:", size, " start:", start
+    print "Updating", updates, "docs in batches of", batchsize
     trev0 = time.time()
     docrevs = _docrevs(db, docint1, docint2)
     trevdt = time.time() - trev0
-    trevrate = int(len(docrevs) / trevdt)
-    print "%s revs, %.3f sec, @ %s revs/sec" % (len(docrevs), trevdt, trevrate)
+    revcount = len(docrevs)
+    trevrate = int(revcount / trevdt)
+    if docrevs:
+        print "%s revs, %.1f sec, @ %s revs/sec" % (revcount, trevdt, trevrate)
     docint1.extend(docint2)
     ok = 0
     for i in range(0, len(docint1), batchsize):
@@ -283,7 +290,7 @@ def _update_docs(db, metadoc):
         ok += _bulk_update(db, docrevs, data, int(t0), docid_batch)
     errors = updates - ok
     dt = time.time() - t0
-    rate = int(total / dt)
+    rate = int(updates / dt)
     print "updated %s docs: dt: %.3f sec, @ %s docs/sec" % (updates, dt, rate)
     if errors > 0:
         print "(!)errors:", errors
