@@ -130,7 +130,7 @@ class MetaDoc(dict):
         """
         metadoc = db.get(self.ID)
         if not metadoc:
-            raise Exception("%s missing in %s, was run dyno-setup run?"(
+            raise Exception("%s missing in %s, was run dyno-setup run?" % (
                 self.ID, db))
         self.update(metadoc)
         return self
