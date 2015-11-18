@@ -9,7 +9,7 @@ which gets continuously updated over days, weeks, months, etc.
 Usage
 -----
 
- * Prerequisites: python 2.7, virtualenv, pip.
+ * Pre-requisites: python 2.7, virtualenv, pip.
 
  * `./build.sh` :
    - Creates a local virtualenv environment ./venv
@@ -36,7 +36,7 @@ parameters in it such as:
         documents total should be in the database.
   * -s | --size : approx size of each document in bytes.
   * -u | --update-per-run : how many documents to update on each run.
-
+  * -w | --wait-to-fill : after setup, fill database with documents
 It also takes a -f | --force parameter which will delete and
 re-create the database. By default if a database is already created,
 this script will show an error.

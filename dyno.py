@@ -31,6 +31,8 @@ def setup():
                    help='Update these many docs on each run')
     p.add_argument('-f', '--force', action="store_true", default=False,
                    help='Overwrite/reset existing db')
+    p.add_argument('-w', '--wait-to-fill', action="store_true", default=False,
+                   help='Fill database until total number of docs')
     args = p.parse_args()
     if not args.force:
         db = _get_db(args.dburl, create=False)
@@ -44,7 +46,11 @@ def setup():
     metadoc = MetaDoc.from_args(args).save(db)
     print "Saved configuration:"
     metadoc.pprint()
-    print "run dyno-execute to start updating documents."
+    if args.wait_to_fill:
+        print "Filling up database..."
+        _update_docs(db, metadoc, updates=args.total)
+        print "Database filled"
+    print "Run 'dyno-execute' periodically to start updating documents."
     exit(0)
 
 
