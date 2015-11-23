@@ -1,5 +1,7 @@
 import time
 import os
+import random
+import string
 import argparse
 import datetime
 import couchdb  # pip : CouchDB==1.0
@@ -8,10 +10,9 @@ DEFAULT_TOTAL = 1000
 DEFAULT_SIZE = 1000
 DEFAULT_UPDATES = 10
 VERSION = 1
-PATTERN = 'x'
 IDPAT = 'dyno_%012d'
-HISTORY_MAX = 100
-
+HISTORY_MAX = 1000
+FILL_BATCH = 100000
 
 # Command Line Entry Points
 
@@ -47,8 +48,15 @@ def setup():
     print "Saved configuration:"
     metadoc.pprint()
     if args.wait_to_fill:
+        print
         print "Filling up database..."
-        _update_docs(db, metadoc, updates=args.total)
+        print
+        left = args.total
+        while left > FILL_BATCH:
+            left -= FILL_BATCH
+            _update_docs(db, metadoc, updates=FILL_BATCH)
+            print
+        _update_docs(db, metadoc, updates=left)
         print "Database filled"
     print "Run 'dyno-execute' periodically to start updating documents."
     exit(0)
@@ -239,14 +247,18 @@ def _docrevs(db, *intervals):
     return revs
 
 
-def _bulk_update(db, docrevs, data, ts, docids):
+def _random_data(size):
+    return ''.join(random.choice(string.ascii_lowercase) for _ in xrange(size))
+
+
+def _bulk_update(db, docrevs, size, ts, docids):
     """
     Update one batch using bulk docs updates. Return
     number of successfully updated docs.
     """
     docs = []
     for _id in docids:
-        doc = dict(_id=_id, ts=ts, data=data)
+        doc = dict(_id=_id, ts=ts, data=_random_data(size))
         _rev = docrevs.get(_id)
         if _rev is not None:
             doc['_rev'] = _rev
@@ -277,11 +289,9 @@ def _update_docs(db, metadoc, updates=0):
     updates = updates if updates else metadoc['updates']
     start = metadoc['start']
     batchsize = _batch_size(size)
-    data = PATTERN * size
     int1, int2 = _intervals(start, updates, total)
     docint1, docint2 = [IDPAT % i for i in int1], [IDPAT % i for i in int2]
-    print "Total docs:", total, " doc size:", size, " start:", start
-    print "Updating", updates, "docs in batches of", batchsize
+    print "Total:", total, " size:", size, " start:", start, " updating:",updates
     trev0 = time.time()
     docrevs = _docrevs(db, docint1, docint2)
     trevdt = time.time() - trev0
@@ -293,11 +303,11 @@ def _update_docs(db, metadoc, updates=0):
     ok = 0
     for i in range(0, len(docint1), batchsize):
         docid_batch = docint1[i:i+batchsize]
-        ok += _bulk_update(db, docrevs, data, int(t0), docid_batch)
+        ok += _bulk_update(db, docrevs, size, int(t0), docid_batch)
     errors = updates - ok
     dt = time.time() - t0
     rate = int(updates / dt)
-    print "updated %s docs: dt: %.3f sec, @ %s docs/sec" % (updates, dt, rate)
+    print "Updated %s dt: %.3f sec @ %s docs/sec" % (updates, dt, rate)
     if errors > 0:
         print "(!)errors:", errors
     return metadoc.checkpoint(db,
