@@ -4,6 +4,7 @@ import random
 import string
 import argparse
 import datetime
+import urlparse
 import couchdb  # pip : CouchDB==1.0
 
 DEFAULT_TOTAL = 1000
@@ -103,8 +104,34 @@ def info():
     if db is None:
         print "ERROR: DB not found. Did you run dyno-setup first?"
         exit(1)
+    info = db.info()
+    print "DB Info:"
+    print " . disk_size:", info['disk_size']
+    print " . doc_count:", info['doc_count']
+    print " . update_seq:", info['update_seq'][:40]+'...'
+    
     metadoc = MetaDoc().load(db)
+    print "Dyno Info:"
     metadoc.pprint()
+    history = metadoc['history']
+    print "Update History:"
+    print " . updates", len(history),"/ max recorded",HISTORY_MAX
+    if len(history)>1:
+        t0,tl = history[0][0], history[-1][0]
+        t = int(tl - t0)
+        t_hours = int(t/3600)
+        t_days = '%0.1f' % (t_hours/24.0)
+        print " . earliest update (utc):", _ts_to_iso(t0)
+        print " . last update (utc):", _ts_to_iso(tl)
+        print " . interval (sec/hours/days):", t, "/", t_hours, "/", t_days
+        max_errors = 0
+        rates = []
+        for _, dt, _, updates, errors in history:
+            rates.append(updates/float(dt))
+            max_errors = max(max_errors, errors)
+        avg_rate = int(sum(rates) / len(rates))
+        print " . max errors seen:", max_errors
+        print " . avg doc update rate:", avg_rate,"/ sec"
     exit(0)
 
 
@@ -168,10 +195,8 @@ class MetaDoc(dict):
 
     def pprint(self):
         for k, v in sorted(self.iteritems()):
-            if k == '_id' or k == '_rev':
+            if k == '_id' or k == '_rev' or k == 'history':
                 continue
-            if k == 'history':
-                v = "(%s items)" % len(v)
             elif k == 'last_ts':
                 v = "%s (%s)" % (v, _ts_to_iso(v))
             elif k == 'created' and isinstance(v, int):
@@ -183,9 +208,9 @@ def _get_db(dburl, create=True, reset_db=False):
     """
     Get a db handle. Optionally reset / create.
     """
-    dburl = dburl.rstrip('/')
-    surl, dbname = os.path.split(dburl)
-    srv = couchdb.Server(surl)
+    sres = urlparse.urlsplit(dburl)
+    dbname = sres.path.lstrip('/')
+    srv = couchdb.Server(urlparse.urlunsplit(sres._replace(path='', query='')))
     srv.version()  # throws if can't connect to server
     if reset_db:
         if dbname in srv:
