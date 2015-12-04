@@ -127,7 +127,8 @@ def info():
         max_errors = 0
         rates = []
         for _, dt, _, updates, errors in history:
-            rates.append(updates/float(dt))
+            if dt>0:
+                rates.append(updates/float(dt))
             max_errors = max(max_errors, errors)
         avg_rate = int(sum(rates) / len(rates))
         print " . max errors seen:", max_errors
