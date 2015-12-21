@@ -3,7 +3,7 @@ from setuptools import setup
 setup(
     name="dyno",
     version="0.1.0",
-    install_requires=["CouchDB"],
+    install_requires=["CouchDB","argparse"],
     py_modules=["dyno"],
     entry_points={
         'console_scripts': [
