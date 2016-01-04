@@ -1,11 +1,11 @@
 import time
-import os
 import random
 import string
 import argparse
 import datetime
 import urlparse
 import couchdb  # pip : CouchDB==1.0
+from couchdb.design import ViewDefinition
 
 DEFAULT_TOTAL = 1000
 DEFAULT_SIZE = 1000
@@ -99,6 +99,10 @@ def info():
     Script endpoint to show setup and run statistics for dyno.
     """
     p = _argparser('Get load test information')
+    p.add_argument('-d', '--daily-census', action="store_true", default=False,
+                   help='Print a daily census (which days had updates)')
+    p.add_argument('-c', '--conflicts', action="store_true", default=False,
+                   help='Print a conflicts report')
     args = p.parse_args()
     db = _get_db(args.dburl, create=False)
     if db is None:
@@ -109,13 +113,13 @@ def info():
     print " . disk_size:", info['disk_size']
     print " . doc_count:", info['doc_count']
     print " . update_seq:", info['update_seq'][:40]+'...'
-    
+
     metadoc = MetaDoc().load(db)
     print "Dyno Info:"
     metadoc.pprint()
     history = metadoc['history']
     print "Update History:"
-    print " . updates", len(history),"/ max recorded",HISTORY_MAX
+    print " . updates", len(history),"/ max kept",HISTORY_MAX
     if len(history)>1:
         t0,tl = history[0][0], history[-1][0]
         t = int(tl - t0)
@@ -130,13 +134,60 @@ def info():
             if dt>0:
                 rates.append(updates/float(dt))
             max_errors = max(max_errors, errors)
-        avg_rate = int(sum(rates) / len(rates))
-        print " . max errors seen:", max_errors
-        print " . avg doc update rate:", avg_rate,"/ sec"
+        if max_errors:
+            print " . max errors seen:", max_errors
+        if len(rates) > 0:
+            avg_rate = int(sum(rates) / len(rates))
+            print " . avg doc update rate:", avg_rate,"/ sec"
+    if args.conflicts:
+        _info_conflicts(db)
+    if args.daily_census:
+        _info_days(db)
     exit(0)
 
 
 # Private helper functions
+
+def _info_conflicts(db):
+    view = _conflicts_view()
+    view.sync(db)
+    for r in db.iterview(view.design+'/'+view.name, batch=10000):
+        print " -> r.id:",str(r.id), "r.key", str(r.key)
+
+def _info_days(db):
+    view = _times_view()
+    view.sync(db)
+    days = set()
+    for r in db.iterview(view.design+'/'+view.name, batch=10000):
+        dinst = datetime.datetime.utcfromtimestamp(int(r.key))
+        days.add(dinst.strftime('%Y-%m-%d'))
+    print "Update census in days:"
+    for d in sorted(days):
+        print " ->",d
+
+
+def _times_view():
+    return ViewDefinition('dyno_times', 'times',
+'''
+function(doc) {
+      if(doc._id.indexOf("dyno_") === 0 &&  doc.ts) {
+         emit(doc.ts, null);
+      }
+}
+''')
+
+
+def _conflicts_view():
+    return ViewDefinition('dyno_conflicts', 'conflicts',
+'''
+function(doc) {
+      if(doc.id.idexOf("dyno_") === 0 && doc._conflicts) {
+         emit(doc._conflicts, null);
+      }
+}
+''', reduce_fun='_count')
+
+
 
 class MetaDoc(dict):
     """
