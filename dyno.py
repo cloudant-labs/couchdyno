@@ -119,9 +119,9 @@ def info():
     metadoc.pprint()
     history = metadoc['history']
     print "Update History:"
-    print " . updates", len(history),"/ max kept",HISTORY_MAX
-    if len(history)>1:
-        t0,tl = history[0][0], history[-1][0]
+    print " . updates", len(history), "/ max kept", HISTORY_MAX
+    if len(history) > 1:
+        t0, tl = history[0][0], history[-1][0]
         t = int(tl - t0)
         t_hours = int(t/3600)
         t_days = '%0.1f' % (t_hours/24.0)
@@ -131,14 +131,14 @@ def info():
         max_errors = 0
         rates = []
         for _, dt, _, updates, errors in history:
-            if dt>0:
+            if dt > 0:
                 rates.append(updates/float(dt))
             max_errors = max(max_errors, errors)
         if max_errors:
             print " . max errors seen:", max_errors
         if len(rates) > 0:
             avg_rate = int(sum(rates) / len(rates))
-            print " . avg doc update rate:", avg_rate,"/ sec"
+            print " . avg doc update rate:", avg_rate, "/ sec"
     if args.conflicts:
         _info_conflicts(db)
     if args.daily_census:
@@ -148,27 +148,58 @@ def info():
 
 # Private helper functions
 
+def _wait_for_view(db, view, maxwait=100000):
+    till = time.time() + maxwait
+    while True:
+        try:
+            for r in view(db, descending=True, limit=1):
+                pass
+            return
+        except couchdb.http.ServerError, ex:
+            ex_args = ex.args[0]
+            if (
+                    isinstance(ex_args, tuple) and
+                    len(ex_args) == 2 and
+                    ex_args[0] == 500 and
+                    isinstance(ex_args[1], tuple) and
+                    ex_args[1][0] == 'timeout'
+            ):
+                time_left = int(till - time.time())
+                if time_left <= 0:
+                    print "ERROR: view", view.name, "took >", maxwait
+                    raise
+                print "... waiting for view, time left:", time_left, "sec."
+                continue
+            else:
+                raise
+
+
 def _info_conflicts(db):
     view = _conflicts_view()
     view.sync(db)
-    for r in db.iterview(view.design+'/'+view.name, batch=10000):
-        print " -> r.id:",str(r.id), "r.key", str(r.key)
+    _wait_for_view(db, view)
+    vres = list(view(db))
+    if len(vres) == 1:
+        print "Conflicts:", vres[0].value
+    elif len(vres) > 1:
+        raise ValueError("Expected 1 result from view. Got: " + str(len(vres)))
+
 
 def _info_days(db):
     view = _times_view()
     view.sync(db)
+    _wait_for_view(db, view)
     days = set()
-    for r in db.iterview(view.design+'/'+view.name, batch=10000):
+    for r in db.iterview(view.design+'/'+view.name, batch=100000):
         dinst = datetime.datetime.utcfromtimestamp(int(r.key))
         days.add(dinst.strftime('%Y-%m-%d'))
-    print "Update census in days:"
+    print "Doc update census (per day):"
     for d in sorted(days):
-        print " ->",d
+        print " ->", d
 
 
 def _times_view():
-    return ViewDefinition('dyno_times', 'times',
-'''
+    return ViewDefinition('dyno_times', 'times', '''
 function(doc) {
       if(doc._id.indexOf("dyno_") === 0 &&  doc.ts) {
          emit(doc.ts, null);
@@ -178,15 +209,13 @@ function(doc) {
 
 
 def _conflicts_view():
-    return ViewDefinition('dyno_conflicts', 'conflicts',
-'''
+    return ViewDefinition('dyno_conflicts', 'conflicts', '''
 function(doc) {
-      if(doc.id.idexOf("dyno_") === 0 && doc._conflicts) {
-         emit(doc._conflicts, null);
+      if(doc._id.indexOf("dyno_") === 0 && doc._conflicts) {
+         emit(doc._id, doc._conflicts.length);
       }
 }
-''', reduce_fun='_count')
-
+''', reduce_fun='_sum')
 
 
 class MetaDoc(dict):
@@ -368,7 +397,7 @@ def _update_docs(db, metadoc, updates=0):
     batchsize = _batch_size(size)
     int1, int2 = _intervals(start, updates, total)
     docint1, docint2 = [IDPAT % i for i in int1], [IDPAT % i for i in int2]
-    print "Total:", total, " size:", size, " start:", start, " updating:",updates
+    print "Total:", total, " size:", size, " @:", start, " updating:", updates
     trev0 = time.time()
     docrevs = _docrevs(db, docint1, docint2)
     trevdt = time.time() - trev0
