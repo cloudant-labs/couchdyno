@@ -13,6 +13,12 @@ FILTER_DOC='rdynofilterdoc'
 FILTER_NAME='rdynofilter'
 TIMEOUT=300 # seconds
 
+def interactive():
+    print "Interactive replication toolbox"
+    import IPython
+    IPython.start_ipython(argv=["-c","'import rep'","-i"])
+
+
 def getsrv(srv_or_port=None):
     if isinstance(srv_or_port, couchdb.Server):
         return srv_or_port
