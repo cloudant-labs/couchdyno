@@ -18,15 +18,20 @@ if [ ! -f ./venv/bin/dyno-execute ]; then
     rm -rf venv
     virtualenv venv
     . ./venv/bin/activate
-    pip install --upgrade pip
-    pip install -r requirements.txt
+    pip install -q --upgrade pip
+    pip install -q -r requirements.txt
 else
     . ./venv/bin/activate
 fi
 
 rm -rf build dist dyno.egg-info
-python setup.py install
+python setup.py install -q
 
-echo "Installed. Can now run any of these: ./venv/bin/dyno-{setup|execute|info}"
+echo "Install finished"
+echo
+echo "Can now run: "
+echo "    ./venv/bin/dyno-{setup|execute|info}"
+echo "    ./venv/bin/repi"
+
 
 
