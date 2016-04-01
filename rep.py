@@ -28,6 +28,7 @@ REPLICATION_PARAMS = dict(
 def interactive():
     print "Interactive replication toolbox"
     print " rep and couchdb module have been auto-imported"
+    print " Assumes cluster runs on http://adm:pass@localhost:5984"
     print " Type rep. and press <TAB> to auto-complete available functions"
     print
     print " Examples:"
