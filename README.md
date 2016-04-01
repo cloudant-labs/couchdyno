@@ -1,13 +1,9 @@
 Dyno
-=====
+====
 
 Utility which updates a configured number of documents in a database
 during each execution cycle. This can be used to model a database
 which gets continuously updated over days, weeks, months, etc.
-
-
-Usage
------
 
  * Pre-requisites: python 2.7, virtualenv, pip.
 
@@ -24,10 +20,6 @@ Usage
  * `./venv/bin/dyno-info DB` to inspect latest stats
 
 Note: DB can include username and password
-
-
-Details
--------
 
 dyno-setup : sets up a database, and records a few
 parameters in it such as:
@@ -106,7 +98,7 @@ New state:
 
 
 Use With Cron
---------------------
+-------------
 
 (This was tested using user's crontab on Mac OS X)
 
@@ -147,3 +139,20 @@ Every minute:
 ```
 0 22 * * 1-5  <pathto>/dyno-execute <dburl>
 ```
+
+Rep
+===
+
+Replicator testing and benchmarking toolbox. Allows setting up various
+replication scenarios, verifying if documents have triggered, also allows
+access to Server and replication Db objects for direct manipulation of 
+those components (creating dbs, creating docs, etc).
+
+Setup
+-----
+
+ * In ASF CouchDB repo: `./dev/run --admin=adm:pass --with-haproxy`
+ * In another terminal in dyno repo: `./build.sh && ./venv/bin/rep`
+ * Should launch an IPython interactive shell: `In [1]: rep.replicate_1_to_n(100)`
+
+Press `rep.` and TAB in interactive shell to get access to more commands. There are functions to setup 1-to-n, n-to-1, n-to-n replications. Optionally to use a large filter in the source DB.
