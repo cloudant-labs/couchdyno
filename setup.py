@@ -10,7 +10,7 @@ setup(
             'dyno-info=dyno:info',
             'dyno-setup=dyno:setup',
             'dyno-execute=dyno:execute',
-            'repi=rep:interactive',
+            'rep=rep:interactive',
         ]
     }
 )

@@ -31,7 +31,7 @@ echo "Install finished"
 echo
 echo "Can now run: "
 echo "    ./venv/bin/dyno-{setup|execute|info}"
-echo "    ./venv/bin/repi"
+echo "    ./venv/bin/rep"
 
 
 
