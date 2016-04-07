@@ -19,13 +19,19 @@ DEFAULT_PORT = 5984
 DEFAULT_REPLICATOR = '_replicator'
 REPLICATION_PARAMS = dict(
     #worker_processes = 1,
-    #connection_timeout = 200000,
+    #connection_timeout = 120000,
     #http_connections = 1,
     #retries_per_request = 1,
     continuous = True)
 
 
 def interactive():
+    """
+    IPython interactive prompt launcher. Launches ipython 
+    (with all its goodies, history of commands, timing modules, 
+    etc.) and auto-import this module (rep) and also imports
+    couchdb python modules.
+    """
     print "Interactive replication toolbox"
     print " rep and couchdb module have been auto-imported"
     print " Assumes cluster runs on http://adm:pass@localhost:5984"
@@ -44,6 +50,10 @@ def interactive():
 
 
 def getsrv(srv_or_port=None, timeout=TIMEOUT, full_commit=FULL_COMMIT):
+    """
+    Get a couchdb.Server() instances. This can usually be passed to all
+    subsequent commands.
+    """
     if isinstance(srv_or_port, couchdb.Server):
         return srv_or_port
     elif isinstance(srv_or_port, int):
@@ -62,6 +72,10 @@ def getsrv(srv_or_port=None, timeout=TIMEOUT, full_commit=FULL_COMMIT):
 
 
 def getdb(db, srv=None, create=True, reset=False):
+    """
+    Get a couchdb.Database() instance. This can be used to manipulate
+    documents in a database.
+    """
     if isinstance(db, couchdb.Database):
         return db
     dbname = db
@@ -86,12 +100,209 @@ def getdb(db, srv=None, create=True, reset=False):
 
 
 def getrdb(db=None, srv=None, create=True, reset=False):
+    """
+    Get replication couchdb.Database() instance. This can be usually
+    passed to all the other function.
+    """
     if db is None:
         db = DEFAULT_REPLICATOR
     return getdb(db, srv=srv, create=create, reset=reset)
 
 
-def clean_dbs(prefix=PREFIX, srv=None):
+def updocs(db, start=1, end=1, prefix=PAYLOAD_PREFIX, **kw):
+    """
+    Update a set of docs in a database using an incremental
+    scheme with a prefix. 
+    """
+    start_did = prefix + '%04d' % start
+    end_did = prefix + '%04d' % end
+    n = _clean_docs(prefix=prefix, db=db, startkey=start_did, endkey=end_did)
+    if n:
+        print "cleaned",n,"docs"
+    def dociter():
+        for i in range(start, end+1):
+            doc = copy.deepcopy(kw)
+            doc['_id'] = prefix + '%04d' % i
+            yield doc
+    print "updating documents..."
+    for res in _bulk_updater(db, dociter):
+        if res[0]:
+            print " >", db.name, res[1], ":", res[2]
+        else:
+            print " > ERROR:", db.name, res[1], res[2]
+
+
+def clean_target_dbs(srv=None):
+    return _clean_dbs(prefix=TGT_PREFIX, srv=srv)
+
+
+def create_target_dbs(n, reset=False, srv=None):
+    _create_n_dbs(n=n, prefix=TGT_PREFIX, reset=reset, srv=srv)
+
+
+def clean_source_dbs(srv=None):
+    return _clean_dbs(prefix=SRC_PREFIX, srv=srv)
+
+
+def create_source_dbs(n, reset=False, srv=None, filt=None):
+    _create_n_dbs(n=n, prefix=SRC_PREFIX, reset=reset, srv=srv, filt=filt)
+
+
+def clean_replications(rdb=None, srv=None):
+    return _clean_docs(prefix=PREFIX, db=getrdb(rdb, srv=srv), srv=srv)
+
+
+def update_source(i=1, start=1, end=1, srv=None, **kw):
+    """
+    Update a particular source identified by a id (default=1) with
+    a range of documents starting at start (default=1) and inclusive end
+    (default=1). Additional keyword parameters can be provides which
+    will end up being written to the source docs
+    """
+    srv = getsrv(srv)
+    db = getdb(_dbname(i, SRC_PREFIX), srv=srv, create=False, reset=False)
+    return updocs(db=db, start=start, end=end, **kw)
+
+
+def clean(rdb=None, srv=None):
+    """
+    Clean replication docs, then clean targets and sources
+    """
+    srv = getsrv(srv)
+    clean_replications(rdb=rdb, srv=srv)
+    clean_target_dbs(srv=srv)
+    clean_source_dbs(srv=srv)
+
+    
+def replicate_n_to_n(n=1, reset=False, srv=None, rdb=None, filt=None, params=None):
+    """
+    Create n to n replications. Source 1 replicates to target 1, source 2 to target 2, etc.
+    filt parameter can specify a size of a filter, to emulate fetching a large filter.
+    """
+    srv = getsrv(srv)
+    rdb = getrdb(rdb, srv=srv) # creates replicator db if not there
+    create_target_dbs(n, reset=reset, srv=srv)
+    print "got",n,"target dbs"
+    create_source_dbs(n, reset=reset, srv=srv, filt=filt)
+    print "got",n,"source dbs"
+    cleaned = clean_replications(rdb=rdb, srv=srv)
+    if cleaned:
+        print "cleaned",cleaned,"old replication docs"
+    def dociter():
+        for i in range(1,n+1):
+            yield _repdoc(src=i, tgt=i, srv=srv, filt=filt, params=params)
+    print "updating documents"
+    for res in _bulk_updater(rdb, dociter):
+        if res[0]:
+            print " >", rdb.name, res[1], ":", res[2]
+        else:
+            print " > ERROR:", rdb.name, res[1], res[2]
+
+
+def replicate_1_to_n(n=1, reset=False, srv=None, rdb=None, filt=None, params=None):
+    """
+    Create 1 to n replications. One source replicates to n different targets.
+    filt parameter can specify a size of a filter, to emulate fetching a large filter.
+    """
+    srv = getsrv(srv)
+    rdb = getrdb(rdb, srv=srv) # creates replicator db if not there
+    create_target_dbs(n, reset=reset, srv=srv)
+    print "got",n,"target dbs"
+    create_source_dbs(1, reset=reset, srv=srv, filt=filt)
+    cleaned = clean_replications(rdb=rdb, srv=srv)
+    if cleaned:
+        print "cleaned",cleaned,"old replication docs"
+    def dociter():
+        for i in range(1,n+1):
+            yield _repdoc(src=1, tgt=i, srv=srv, filt=filt, params=params)
+    print "updating documents"
+    for res in _bulk_updater(rdb, dociter):
+        if res[0]:
+            print " >", rdb.name, res[1], ":", res[2]
+        else:
+            print " > ERROR:", rdb.name, res[1], res[2]
+
+
+def replicate_n_to_1(n=1, reset=False, srv=None, rdb=None, filt=None, params=None):
+    """
+    Replicate n to 1. n sources replicates to 1 single target.
+    filt parameter can specify a size of a filter, to emulate fetching a large filter.
+    """
+    srv = getsrv(srv)
+    rdb = getrdb(rdb, srv=srv) # creates replicator db if not there
+    create_source_dbs(n, reset=reset, srv=srv, filt=filt)
+    print "got",n,"source dbs"
+    create_target_dbs(1, reset=reset, srv=srv)
+    cleaned = clean_replications(rdb=rdb, srv=srv)
+    if cleaned:
+        print "cleaned",cleaned,"old replication docs"
+    def dociter():
+        for i in range(1,n+1):
+            yield _repdoc(src=i, tgt=1, srv=srv, filt=filt, params=params)
+    print "updating documents"
+    for res in _bulk_updater(rdb, dociter):
+        if res[0]:
+            print " >", rdb.name, res[1], ":", res[2]
+        else:
+            print " > ERROR:", rdb.name, res[1], res[2]
+
+def check_untriggered(also_errors=True, rdb=None, srv=None):
+    """
+    Return dictionary of untriggered docs. Could also be (error)
+    """
+    srv=getsrv(srv)
+    rdb=getrdb(rdb, srv=srv, create=False)
+    res = {}
+    skipset = set(["completed", "triggered"])
+    if not also_errors:
+        skipset.add("error")
+    for doc in _yield_docs(rdb, prefix=PREFIX):
+        did = doc.get("_id")
+        _replication_state = doc.get('_replication_state','')
+        if _replication_state in skipset:
+            continue
+        res[str(did)] = str(_replication_state)
+    return res
+
+
+def tdb(i=1, srv=None):
+    """
+    Get target db object identified by an id (starting at 1)
+    """
+    srv = getsrv(srv)
+    return getdb(_dbname(i, TGT_PREFIX), srv=srv, create=False)
+
+
+def tdbdocs(i=1,srv=None):
+    """
+    Return list of all docs from a particular target db identifeid
+    by an id (starting at 1)
+    """
+    res = []
+    db = tdb(i,srv=srv)
+    for did in db:
+        res += [dict(db[did])]
+    return res
+
+
+def rdbdocs(srv=None, rdb=None):
+    """
+    Return list of replicator docs. Skips over _design/
+    docs.
+    """
+    res = []
+    rdb =  getrdb(srv=srv, rdb=rdb)
+    for did in rdb:
+        if '_design' in did:
+            res += [{'_id':did}]
+            continue
+        res += [dict(rdb[did])]
+    return res
+
+
+### Private Utility Functions ###
+
+def _clean_dbs(prefix=PREFIX, srv=None):
     srv = getsrv(srv)
     cnt = 0
     for dbname in srv:
@@ -130,7 +341,12 @@ def _yield_docs(db, prefix=None, batchsize=1000):
         yield r.doc
 
 
-def _batchit(it, batchsize=1):
+def _batchit(it, batchsize=500):
+    """
+    This is a batcher. Given an interator and a batchsize,
+    generate lists of up to batchsize items. When done
+    raises StopItration exception.
+    """
     if callable(it):
         it = it()
     while True:
@@ -140,7 +356,7 @@ def _batchit(it, batchsize=1):
         yield batch
 
 
-def _bulk_updater(db, docit, batchsize=1000):
+def _bulk_updater(db, docit, batchsize=500):
     """
     Bulk updater. Takes a db, a document iterator
     and a batchsize. It batches up documents from the
@@ -152,7 +368,7 @@ def _bulk_updater(db, docit, batchsize=1000):
             yield str(ok), str(docid), str(rev)
 
 
-def clean_docs(prefix, db, startkey=None, endkey=None, srv=None):
+def _clean_docs(prefix, db, startkey=None, endkey=None, srv=None):
     db = getdb(db, srv=srv, create=False, reset=False)
     if startkey is not None and endkey is not None:
         all_docs_params = dict(startkey=startkey,
@@ -174,11 +390,11 @@ def _dbname(num, prefix):
     return prefix + '%04d' % num
 
 
-def create_n_dbs(n, prefix, reset=False, srv=None, filt=None):
+def _create_n_dbs(n, prefix, reset=False, srv=None, filt=None):
     srv = getsrv(srv)
     ddoc_id = '_design/%s' % FILTER_DOC
     if filt is not None:
-        filt = get_filter_ddoc(filt)
+        filt = _filter_ddoc(filt)
     for i in range(1,n+1):
         dbname = _dbname(i, prefix)
         db = getdb(dbname, srv=srv, create=True, reset=reset)
@@ -193,7 +409,7 @@ def create_n_dbs(n, prefix, reset=False, srv=None, filt=None):
                 db[ddoc_id] = copy.deepcopy(filt)
 
 
-def remote_url(srv, dbname):
+def _remote_url(srv, dbname):
     if '://' in dbname:
         return dbname
     url = srv.resource.url
@@ -202,29 +418,10 @@ def remote_url(srv, dbname):
     return '://'.join([schema, '%s:%s@%s/%s' % (usr, pwd, rest, dbname)])
 
 
-def updocs(db, start=1, end=1, prefix=PAYLOAD_PREFIX, **kw):
-    start_did = prefix + '%04d' % start
-    end_did = prefix + '%04d' % end
-    n = clean_docs(prefix=prefix, db=db, startkey=start_did, endkey=end_did)
-    if n:
-        print "cleaned",n,"docs"
-    def dociter():
-        for i in range(start, end+1):
-            doc = copy.deepcopy(kw)
-            doc['_id'] = prefix + '%04d' % i
-            yield doc
-    print "updating documents..."
-    for res in _bulk_updater(db, dociter):
-        if res[0]:
-            print " >", db.name, res[1], ":", res[2]
-        else:
-            print " > ERROR:", db.name, res[1], res[2]
-
-
-def repdoc(src, tgt, srv, filt=None, params=None):
+def _repdoc(src, tgt, srv, filt=None, params=None):
     did = PREFIX + '%04d_%04d' % (src, tgt)
-    src_dbname = remote_url(srv, _dbname(src, SRC_PREFIX))
-    tgt_dbname = remote_url(srv, _dbname(tgt, TGT_PREFIX))
+    src_dbname = _remote_url(srv, _dbname(src, SRC_PREFIX))
+    tgt_dbname = _remote_url(srv, _dbname(tgt, TGT_PREFIX))
     if params is None:
         params = {}
     doc = REPLICATION_PARAMS.copy()
@@ -234,28 +431,7 @@ def repdoc(src, tgt, srv, filt=None, params=None):
     doc.update(params)
     return doc
 
-
-def clean_target_dbs(srv=None):
-    return clean_dbs(prefix=TGT_PREFIX, srv=srv)
-
-
-def create_target_dbs(n, reset=False, srv=None):
-    create_n_dbs(n=n, prefix=TGT_PREFIX, reset=reset, srv=srv)
-
-
-def clean_source_dbs(srv=None):
-    return clean_dbs(prefix=SRC_PREFIX, srv=srv)
-
-
-def create_source_dbs(n, reset=False, srv=None, filt=None):
-    create_n_dbs(n=n, prefix=SRC_PREFIX, reset=reset, srv=srv, filt=filt)
-
-
-def clean_replications(rdb=None, srv=None):
-    return clean_docs(prefix=PREFIX, db=getrdb(rdb, srv=srv), srv=srv)
-
-
-def get_filter_ddoc(filt):
+def _filter_ddoc(filt):
     if filt is None:
         return None
     payload = ';' * filt
@@ -265,114 +441,3 @@ def get_filter_ddoc(filt):
             FILTER_NAME : '''function(doc,req) { %s return ; }''' % payload
         }
     }
-
-
-def update_source(i, srv=None, start=1, end=1, **kw):
-    srv = getsrv(srv)
-    db = getdb(_dbname(i, SRC_PREFIX), srv=srv, create=False, reset=False)
-    return updocs(db=db, start=start, end=end, **kw)
-
-
-def clean(rdb=None, srv=None):
-    srv = getsrv(srv)
-    clean_replications(rdb=rdb, srv=srv)
-    clean_target_dbs(srv=srv)
-    clean_source_dbs(srv=srv)
-
-    
-def replicate_n_to_n(n=1, sleep_dt=0, reset=False, srv=None, rdb=None, filt=None, params=None):
-    srv = getsrv(srv)
-    rdb = getrdb(rdb, srv=srv) # creates replicator db if not there
-    create_target_dbs(n, reset=reset, srv=srv)
-    print "got",n,"target dbs"
-    create_source_dbs(n, reset=reset, srv=srv, filt=filt)
-    print "got",n,"source dbs"
-    cleaned = clean_replications(rdb=rdb, srv=srv)
-    if cleaned:
-        print "cleaned",cleaned,"old replication docs"
-    def dociter():
-        for i in range(1,n+1):
-            yield repdoc(src=i, tgt=i, srv=srv, filt=filt, params=params)
-    print "updating documents"
-    for res in _bulk_updater(rdb, dociter):
-        if res[0]:
-            print " >", rdb.name, res[1], ":", res[2]
-        else:
-            print " > ERROR:", rdb.name, res[1], res[2]
-
-
-def replicate_1_to_n(n=1, sleep_dt=0, reset=False, srv=None, rdb=None, filt=None, params=None):
-    srv = getsrv(srv)
-    rdb = getrdb(rdb, srv=srv) # creates replicator db if not there
-    create_target_dbs(n, reset=reset, srv=srv)
-    print "got",n,"target dbs"
-    create_source_dbs(1, reset=reset, srv=srv, filt=filt)
-    cleaned = clean_replications(rdb=rdb, srv=srv)
-    if cleaned:
-        print "cleaned",cleaned,"old replication docs"
-    def dociter():
-        for i in range(1,n+1):
-            yield repdoc(src=1, tgt=i, srv=srv, filt=filt, params=params)
-    print "updating documents"
-    for res in _bulk_updater(rdb, dociter):
-        if res[0]:
-            print " >", rdb.name, res[1], ":", res[2]
-        else:
-            print " > ERROR:", rdb.name, res[1], res[2]
-
-
-def replicate_n_to_1(n=1, sleep_dt=0, reset=False, srv=None, rdb=None, filt=None, params=None):
-    srv = getsrv(srv)
-    rdb = getrdb(rdb, srv=srv) # creates replicator db if not there
-    create_source_dbs(n, reset=reset, srv=srv, filt=filt)
-    print "got",n,"source dbs"
-    create_target_dbs(1, reset=reset, srv=srv)
-    cleaned = clean_replications(rdb=rdb, srv=srv)
-    if cleaned:
-        print "cleaned",cleaned,"old replication docs"
-    def dociter():
-        for i in range(1,n+1):
-            yield repdoc(src=i, tgt=1, srv=srv, filt=filt, params=params)
-    print "updating documents"
-    for res in _bulk_updater(rdb, dociter):
-        if res[0]:
-            print " >", rdb.name, res[1], ":", res[2]
-        else:
-            print " > ERROR:", rdb.name, res[1], res[2]
-
-def check_untriggered(rdb=None, srv=None):
-    srv=getsrv(srv)
-    rdb=getrdb(rdb, srv=srv, create=False)
-    res = {}
-    for doc in _yield_docs(rdb, prefix=PREFIX):
-        did = doc.get("_id")
-        _replication_state = doc.get('_replication_state')
-        if _replication_state != "triggered":
-            res[did] = _replication_state
-    return res
-
-
-def tdb(i,srv=None):
-    srv = getsrv(srv)
-    return getdb(_dbname(i, TGT_PREFIX), srv=srv, create=False)
-
-
-def tdbdocs(i=1,srv=None):
-    res = []
-    db = tdb(i,srv=srv)
-    for did in db:
-        res += [dict(db[did])]
-    return res
-
-
-def rdbdocs(srv=None):
-    res = []
-    rdb =  getrdb(srv=srv)
-    for did in rdb:
-        if '_design' in did:
-            res += [{'_id':did}]
-            continue
-        res += [dict(rdb[did])]
-    return res
-    
-        
