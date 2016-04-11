@@ -27,8 +27,8 @@ REPLICATION_PARAMS = dict(
 
 def interactive():
     """
-    IPython interactive prompt launcher. Launches ipython 
-    (with all its goodies, history of commands, timing modules, 
+    IPython interactive prompt launcher. Launches ipython
+    (with all its goodies, history of commands, timing modules,
     etc.) and auto-import this module (rep) and also imports
     couchdb python modules.
     """
@@ -39,11 +39,13 @@ def interactive():
     print
     print " Examples:"
     print "  * rep.replicate_1_to_n(10) # replicate 1 source to 10 targets"
-    print "  * rep.replciate_n_to_n(2) # replicate 2 sources to 2 targets"
+    print "  * rep.replicate_n_to_n(20) # replicate 20 sources to 20 targets, 1->1, 2->2, etc"
     print "  * rep.getsrv() # get a CouchDB Server instance"
-    print "  * rep.getrdb() # get default _replicator database instance"
     print "  * rep.check_untriggered() # check for untriggered docs in _replicator"
-    print "  * rep.update_source(2, start=1, end=10) # update source db 2 with 10 docs"
+    print "  * rep.replicate_1_to_n_then_check_replication(10, cycles=3, num=10)"
+    print "    # replicate 1 source to 10 target, wait for replication docs to trigger"
+    print "    # then update source with 10 docs and wait till they appear on target"
+    print "    # do that for 3 cycles in a row."
     print
     import IPython
     IPython.start_ipython(argv=["-c","'import rep; import couchdb'","-i"])
@@ -67,7 +69,7 @@ def getsrv(srv_or_port=None, timeout=TIMEOUT, full_commit=FULL_COMMIT):
         s = couchdb.Server(url, session=sess, full_commit=full_commit)
     else:
         s = couchdb.Server(url, full_commit=full_commit)
-    print "Using server ",s.resource.url,"version:",s.version()
+    #print "Using server ",s.resource.url,"version:",s.version()
     return s
 
 
@@ -108,51 +110,79 @@ def getrdb(db=None, srv=None, create=True, reset=False):
         db = DEFAULT_REPLICATOR
     return getdb(db, srv=srv, create=create, reset=reset)
 
+class RetryTimeoutExceeded(Exception):
+    """Exceed retry timeout"""
 
-def updocs(db, start=1, end=1, prefix=PAYLOAD_PREFIX, **kw):
+def retry_till(check=bool, timeout=None, dt=5, log=True):
+    """
+    Retry a function repeatedly until timeout has passed
+    (or forever if timeout is None). Wait between retries
+    is specifed by `dt` parameter. Function is considered
+    to have succeeded if it didn't throw an exception and
+    then based `check` param:
+
+      * if check is callable then it calls check(result) and
+        if that returns True it is considered to have succeeded.
+
+      * if check is not a calleble then checks for equality
+    If timeout is exceeded then RetryTimeoutExceeded exception
+    is raised.
+
+    Example:
+     @retry_till(2, timeout=10, 1.5)
+     def fun(...):
+         ...
+     Function is retried for 10 seconds with 1.5 seconds interval
+     in between. If it returns 2 then it succeeds. If it doesn't
+     return true then RetryTimeoutExceeded exception will be
+     thrown.
+    """
+    def deco(f):
+        def retry(*args, **kw):
+            t0 = time.time()
+            tf = t0 + timeout if timeout is not None else None
+            while True:
+                if tf is not None and time.time() > tf:
+                    raise RetryTimeoutExceeded("Timeout : %s" % timeout)
+                r = f(*args, **kw)
+                if (callable(check) and check(r)) or check==r:
+                    if log:
+                        fn = _fname(f)
+                        tstr = '%.3f +/- %.1f ' % (time.time()-t0, dt)
+                        print " > function", fn, "succeded after", tstr, "sec."
+                    return r
+                elif check == r:
+                    return r
+                if log:
+                    print " > retrying function", _fname(f)
+                time.sleep(dt)
+        return retry
+    return deco
+
+
+def updocs(db, num=1, prefix=PAYLOAD_PREFIX, **kw):
     """
     Update a set of docs in a database using an incremental
-    scheme with a prefix. 
+    scheme with a prefix.
     """
+    start, end = 1, num
     start_did = prefix + '%04d' % start
     end_did = prefix + '%04d' % end
-    n = _clean_docs(prefix=prefix, db=db, startkey=start_did, endkey=end_did)
-    if n:
-        print "cleaned",n,"docs"
+    _clean_docs(prefix=prefix, db=db, startkey=start_did, endkey=end_did)
     def dociter():
         for i in range(start, end+1):
             doc = copy.deepcopy(kw)
             doc['_id'] = prefix + '%04d' % i
             yield doc
-    print "updating documents..."
+    #print "updating documents..."
     for res in _bulk_updater(db, dociter):
         if res[0]:
-            print " >", db.name, res[1], ":", res[2]
+            pass # print " >", db.name, res[1], ":", res[2]
         else:
             print " > ERROR:", db.name, res[1], res[2]
 
 
-def clean_target_dbs(srv=None):
-    return _clean_dbs(prefix=TGT_PREFIX, srv=srv)
-
-
-def create_target_dbs(n, reset=False, srv=None):
-    _create_n_dbs(n=n, prefix=TGT_PREFIX, reset=reset, srv=srv)
-
-
-def clean_source_dbs(srv=None):
-    return _clean_dbs(prefix=SRC_PREFIX, srv=srv)
-
-
-def create_source_dbs(n, reset=False, srv=None, filt=None):
-    _create_n_dbs(n=n, prefix=SRC_PREFIX, reset=reset, srv=srv, filt=filt)
-
-
-def clean_replications(rdb=None, srv=None):
-    return _clean_docs(prefix=PREFIX, db=getrdb(rdb, srv=srv), srv=srv)
-
-
-def update_source(i=1, start=1, end=1, srv=None, **kw):
+def update_source(i=1, num=1, srv=None, **kw):
     """
     Update a particular source identified by a id (default=1) with
     a range of documents starting at start (default=1) and inclusive end
@@ -161,7 +191,7 @@ def update_source(i=1, start=1, end=1, srv=None, **kw):
     """
     srv = getsrv(srv)
     db = getdb(_dbname(i, SRC_PREFIX), srv=srv, create=False, reset=False)
-    return updocs(db=db, start=start, end=end, **kw)
+    return updocs(db=db, num=num, **kw)
 
 
 def clean(rdb=None, srv=None):
@@ -169,34 +199,25 @@ def clean(rdb=None, srv=None):
     Clean replication docs, then clean targets and sources
     """
     srv = getsrv(srv)
-    clean_replications(rdb=rdb, srv=srv)
-    clean_target_dbs(srv=srv)
-    clean_source_dbs(srv=srv)
+    _clean_docs(prefix=PREFIX, db=getrdb(rdb, srv=srv), srv=srv)
+    _clean_dbs(prefix=TGT_PREFIX, srv=srv)
+    _clean_dbs(prefix=SRC_PREFIX, srv=srv)
 
-    
+
 def replicate_n_to_n(n=1, reset=False, srv=None, rdb=None, filt=None, params=None):
     """
     Create n to n replications. Source 1 replicates to target 1, source 2 to target 2, etc.
     filt parameter can specify a size of a filter, to emulate fetching a large filter.
     """
     srv = getsrv(srv)
-    rdb = getrdb(rdb, srv=srv) # creates replicator db if not there
-    create_target_dbs(n, reset=reset, srv=srv)
-    print "got",n,"target dbs"
-    create_source_dbs(n, reset=reset, srv=srv, filt=filt)
-    print "got",n,"source dbs"
-    cleaned = clean_replications(rdb=rdb, srv=srv)
-    if cleaned:
-        print "cleaned",cleaned,"old replication docs"
+    rdb = getrdb(rdb, srv=srv)
+    _create_n_dbs(n=n, prefix=SRC_PREFIX, reset=reset, srv=srv, filt=filt)
+    _create_n_dbs(n=n, prefix=TGT_PREFIX, reset=reset, srv=srv)
+    _clean_docs(prefix=PREFIX, db=rdb, srv=srv)
     def dociter():
-        for i in range(1,n+1):
+        for i in xrange(1,n+1):
             yield _repdoc(src=i, tgt=i, srv=srv, filt=filt, params=params)
-    print "updating documents"
-    for res in _bulk_updater(rdb, dociter):
-        if res[0]:
-            print " >", rdb.name, res[1], ":", res[2]
-        else:
-            print " > ERROR:", rdb.name, res[1], res[2]
+    return _rdb_bulk_updater(rdb, dociter)
 
 
 def replicate_1_to_n(n=1, reset=False, srv=None, rdb=None, filt=None, params=None):
@@ -205,22 +226,14 @@ def replicate_1_to_n(n=1, reset=False, srv=None, rdb=None, filt=None, params=Non
     filt parameter can specify a size of a filter, to emulate fetching a large filter.
     """
     srv = getsrv(srv)
-    rdb = getrdb(rdb, srv=srv) # creates replicator db if not there
-    create_target_dbs(n, reset=reset, srv=srv)
-    print "got",n,"target dbs"
-    create_source_dbs(1, reset=reset, srv=srv, filt=filt)
-    cleaned = clean_replications(rdb=rdb, srv=srv)
-    if cleaned:
-        print "cleaned",cleaned,"old replication docs"
+    rdb = getrdb(rdb, srv=srv)
+    _create_n_dbs(n=1, prefix=SRC_PREFIX, reset=reset, srv=srv, filt=filt)
+    _create_n_dbs(n=n, prefix=TGT_PREFIX, reset=reset, srv=srv)
+    _clean_docs(prefix=PREFIX, db=rdb, srv=srv)
     def dociter():
-        for i in range(1,n+1):
+        for i in xrange(1,n+1):
             yield _repdoc(src=1, tgt=i, srv=srv, filt=filt, params=params)
-    print "updating documents"
-    for res in _bulk_updater(rdb, dociter):
-        if res[0]:
-            print " >", rdb.name, res[1], ":", res[2]
-        else:
-            print " > ERROR:", rdb.name, res[1], res[2]
+    return _rdb_bulk_updater(rdb, dociter)
 
 
 def replicate_n_to_1(n=1, reset=False, srv=None, rdb=None, filt=None, params=None):
@@ -230,21 +243,15 @@ def replicate_n_to_1(n=1, reset=False, srv=None, rdb=None, filt=None, params=Non
     """
     srv = getsrv(srv)
     rdb = getrdb(rdb, srv=srv) # creates replicator db if not there
-    create_source_dbs(n, reset=reset, srv=srv, filt=filt)
-    print "got",n,"source dbs"
-    create_target_dbs(1, reset=reset, srv=srv)
-    cleaned = clean_replications(rdb=rdb, srv=srv)
-    if cleaned:
-        print "cleaned",cleaned,"old replication docs"
+    _create_n_dbs(n=n, prefix=SRC_PREFIX, reset=reset, srv=srv, filt=filt)
+    _create_n_dbs(n=1, prefix=TGT_PREFIX, reset=reset, srv=srv)
+    _clean_docs(prefix=PREFIX, db=rdb, srv=srv)
     def dociter():
-        for i in range(1,n+1):
+        for i in xrange(1,n+1):
             yield _repdoc(src=i, tgt=1, srv=srv, filt=filt, params=params)
-    print "updating documents"
-    for res in _bulk_updater(rdb, dociter):
-        if res[0]:
-            print " >", rdb.name, res[1], ":", res[2]
-        else:
-            print " > ERROR:", rdb.name, res[1], res[2]
+    return _rdb_bulk_updater(rdb, dociter)
+
+
 
 def check_untriggered(also_errors=True, rdb=None, srv=None):
     """
@@ -263,6 +270,15 @@ def check_untriggered(also_errors=True, rdb=None, srv=None):
             continue
         res[str(did)] = str(_replication_state)
     return res
+
+
+@retry_till(lambda x : x == {}, 600, 10)
+def wait_to_trigger(also_errors=True, rdb=None, srv=None):
+    """
+    Call check_untriggered repeteadly until it succeed or
+    fails due to timeout.
+    """
+    return check_untriggered(also_errors=also_errors, rdb=rdb, srv=srv)
 
 
 def tdb(i=1, srv=None):
@@ -298,6 +314,94 @@ def rdbdocs(srv=None, rdb=None):
             continue
         res += [dict(rdb[did])]
     return res
+
+def compare_dbs(db1, db2, srv=None, prefix=None):
+    """
+    Compare 2 databases, optionally only compare documents with
+    a certain prefix.
+    Return:
+       A lower bound on (num_docs_in_1_but_not_2,  num_docs_in_2_but_not_1).
+    The lower bounds is because of an optimization -- in case prefix is
+    not specified, if databases simply have a different number of docs,
+    then return the difference in the number of docs. Then if number match,
+    specific document _ids are compared using a set difference algorithm. Only
+    if those match, it will fetch all docs and compare that way.
+    """
+    srv = getsrv(srv)
+    if isinstance(db1, basestring):
+        db1 = srv[db1]
+    if isinstance(db2, basestring):
+        db2 = srv[db2]
+    if prefix is None:
+        # if prefix is not specified, look at number of docs only as first try
+        cnt1, cnt2 = db1.info()['doc_count'], db2.info()['doc_count']
+        if cnt1 != cnt2:
+            return cnt1-cnt2, cnt2-cnt1
+    # next, compare ids only, if those show differences, no reason to bother
+    # with getting all the docs
+    s1 = set((_id for _id in _yield_revs(db1, prefix=prefix, batchsize=1000)))
+    s2 = set((_id for _id in _yield_revs(db2, prefix=prefix, batchsize=1000)))
+    if len(s1) != len(s2):
+        return len(s1)-len(s2), len(s2)-len(s1)
+    sdiff12, sdiff21 = s1-s2, s2-s1
+    if sdiff12 or sdiff21:
+        return len(sdiff12), len(sdiff21)
+    # do the slow thing, this builds all docs in memory so don't use on large dbs
+    dict1, dict2 = {}, {}
+    sdocdiff12, sdocdiff21 = set(), set()
+    for d1doc in _yield_docs(db1, prefix=None):
+        d1doc.pop('_rev')
+        dict1[d1doc['_id']] = d1doc
+    for d2doc in _yield_docs(db2, prefix=None):
+        d2doc.pop('_rev')
+        _id = d2doc['_id']
+        dict2[_id] = d2doc
+        if _id not in dict1 or d2doc!=dict1[_id]:
+            sdocdiff21.add(_id)
+    for _id, d1doc in dict1.iteritems():
+        if _id not in dict2 or d1doc != dict2[_id]:
+            sdocdiff12.add(_id)
+    return len(sdocdiff12), len(sdocdiff21)
+
+
+@retry_till((0,0), 1200, 1)
+def wait_till_dbs_equal(db1, db2, srv=None, prefix=None):
+    return compare_dbs(db1, db2, srv=None, prefix=None)
+
+
+def wait_till_source_and_target_equal(src_id, target_id, srv=None, log=True):
+    srv = getsrv(srv)
+    src = getdb(_dbname(src_id,    SRC_PREFIX), srv=srv, create=False)
+    tgt = getdb(_dbname(target_id, TGT_PREFIX), srv=srv, create=False)
+    t0 = time.time()
+    wait_till_dbs_equal(src, tgt, srv=srv)
+    dt = time.time()-t0
+    if log:
+        print " > waiting till source_and_target equal %s, %s waited %.3f seconds" % (
+            src_id, target_id, dt)
+
+def update_source_and_wait_to_propagate_to_targets(targets, src_id=1, num=1, srv=None, log=True, **kw):
+    update_source(i=src_id, num=num, srv=srv, **kw)
+    t0 = time.time()
+    for i in xrange(1, targets+1):
+        print " > waiting for target ",i
+        wait_till_source_and_target_equal(src_id=src_id, target_id=i, srv=srv, log=False)
+    dt = time.time()-t0
+    if log:
+        print " > waiting to propagate changes from ",src_id,"to",targets," : %.3f sec."%dt
+
+def replicate_1_to_n_and_wait_to_trigger(n=1, reset=False, srv=None, rdb=None, filt=None):
+    replicate_1_to_n(n=n, reset=reset, srv=srv, rdb=rdb, filt=filt)
+    print "waiting for replication documents to trigger"
+    wait_to_trigger(rdb=rdb, srv=srv)
+    print "all replication documents triggered"
+
+def replicate_1_to_n_then_check_replication(n=1, cycles=1, num=1, reset=False,  srv=None, rdb=None, filt=None):
+    replicate_1_to_n_and_wait_to_trigger(n, reset, srv, rdb, filt)
+    for cycle in xrange(cycles):
+        print ">>> update cycle",cycle," <<<"
+        update_source_and_wait_to_propagate_to_targets(targets=n, num=num, srv=srv, log=True, cycle=cycle)
+        print
 
 
 ### Private Utility Functions ###
@@ -338,7 +442,7 @@ def _yield_docs(db, prefix=None, batchsize=1000):
         _id = str(r.id)
         if prefix and not _id.startswith(prefix):
             continue
-        yield r.doc
+        yield dict(r.doc)
 
 
 def _batchit(it, batchsize=500):
@@ -367,6 +471,13 @@ def _bulk_updater(db, docit, batchsize=500):
         for (ok, docid, rev) in db.update(batch):
             yield str(ok), str(docid), str(rev)
 
+def _rdb_bulk_updater(rdb, dociter):
+    print "updating documents"
+    for res in _bulk_updater(rdb, dociter):
+        if res[0]:
+            print " >", rdb.name, res[1], ":", res[2]
+        else:
+            print " > ERROR:", rdb.name, res[1], res[2]
 
 def _clean_docs(prefix, db, startkey=None, endkey=None, srv=None):
     db = getdb(db, srv=srv, create=False, reset=False)
@@ -389,6 +500,11 @@ def _clean_docs(prefix, db, startkey=None, endkey=None, srv=None):
 def _dbname(num, prefix):
     return prefix + '%04d' % num
 
+def _fname(f):
+    try:
+       return f.func_name
+    except:
+       return str(f)
 
 def _create_n_dbs(n, prefix, reset=False, srv=None, filt=None):
     srv = getsrv(srv)
@@ -407,6 +523,7 @@ def _create_n_dbs(n, prefix, reset=False, srv=None, filt=None):
                 db[ddoc_id] = filt2
             else:
                 db[ddoc_id] = copy.deepcopy(filt)
+    print " > created ",n,"dbs with prefix",prefix
 
 
 def _remote_url(srv, dbname):
