@@ -15,13 +15,13 @@ FILTER_NAME='rdynofilter'
 TIMEOUT=None #300 # seconds
 FULL_COMMIT=False
 DEFAULT_HOST = 'http://adm:pass@localhost'
-DEFAULT_PORT = 5984
+DEFAULT_PORT = 15984
 DEFAULT_REPLICATOR = '_replicator'
 REPLICATION_PARAMS = dict(
-    #worker_processes = 1,
-    #connection_timeout = 120000,
-    #http_connections = 1,
-    #retries_per_request = 1,
+    worker_processes = 1,
+    connection_timeout = 120000,
+    http_connections = 1,
+    retries_per_request = 2,
     continuous = True)
 
 
@@ -41,9 +41,8 @@ def interactive():
     print "  * rep.replicate_1_to_n(10) # replicate 1 source to 10 targets"
     print "  * rep.replicate_n_to_n(20) # replicate 20 sources to 20 targets, 1->1, 2->2, etc"
     print "  * rep.getsrv() # get a CouchDB Server instance"
-    print "  * rep.check_untriggered() # check for untriggered docs in _replicator"
     print "  * rep.replicate_1_to_n_then_check_replication(10, cycles=3, num=10)"
-    print "    # replicate 1 source to 10 target, wait for replication docs to trigger"
+    print "    # replicate 1 source to 10 target"
     print "    # then update source with 10 docs and wait till they appear on target"
     print "    # do that for 3 cycles in a row."
     print
@@ -113,7 +112,7 @@ def getrdb(db=None, srv=None, create=True, reset=False):
 class RetryTimeoutExceeded(Exception):
     """Exceed retry timeout"""
 
-def retry_till(check=bool, timeout=None, dt=5, log=True):
+def retry_till(check=bool, timeout=None, dt=1, log=True):
     """
     Retry a function repeatedly until timeout has passed
     (or forever if timeout is None). Wait between retries
@@ -252,35 +251,6 @@ def replicate_n_to_1(n=1, reset=False, srv=None, rdb=None, filt=None, params=Non
     return _rdb_bulk_updater(rdb, dociter)
 
 
-
-def check_untriggered(also_errors=True, rdb=None, srv=None):
-    """
-    Return dictionary of untriggered docs. Could also be (error)
-    """
-    srv=getsrv(srv)
-    rdb=getrdb(rdb, srv=srv, create=False)
-    res = {}
-    skipset = set(["completed", "triggered"])
-    if not also_errors:
-        skipset.add("error")
-    for doc in _yield_docs(rdb, prefix=PREFIX):
-        did = doc.get("_id")
-        _replication_state = doc.get('_replication_state','')
-        if _replication_state in skipset:
-            continue
-        res[str(did)] = str(_replication_state)
-    return res
-
-
-@retry_till(lambda x : x == {}, 600, 10)
-def wait_to_trigger(also_errors=True, rdb=None, srv=None):
-    """
-    Call check_untriggered repeteadly until it succeed or
-    fails due to timeout.
-    """
-    return check_untriggered(also_errors=also_errors, rdb=rdb, srv=srv)
-
-
 def tdb(i=1, srv=None):
     """
     Get target db object identified by an id (starting at 1)
@@ -307,7 +277,7 @@ def rdbdocs(srv=None, rdb=None):
     docs.
     """
     res = []
-    rdb =  getrdb(srv=srv, rdb=rdb)
+    rdb =  getrdb(srv=srv, db=rdb)
     for did in rdb:
         if '_design' in did:
             res += [{'_id':did}]
@@ -390,14 +360,9 @@ def update_source_and_wait_to_propagate_to_targets(targets, src_id=1, num=1, srv
     if log:
         print " > waiting to propagate changes from ",src_id,"to",targets," : %.3f sec."%dt
 
-def replicate_1_to_n_and_wait_to_trigger(n=1, reset=False, srv=None, rdb=None, filt=None):
-    replicate_1_to_n(n=n, reset=reset, srv=srv, rdb=rdb, filt=filt)
-    print "waiting for replication documents to trigger"
-    wait_to_trigger(rdb=rdb, srv=srv)
-    print "all replication documents triggered"
 
 def replicate_1_to_n_then_check_replication(n=1, cycles=1, num=1, reset=False,  srv=None, rdb=None, filt=None):
-    replicate_1_to_n_and_wait_to_trigger(n, reset, srv, rdb, filt)
+    replicate_1_to_n(n=n, reset=reset, srv=srv, rdb=rdb, filt=filt)
     for cycle in xrange(cycles):
         print ">>> update cycle",cycle," <<<"
         update_source_and_wait_to_propagate_to_targets(targets=n, num=num, srv=srv, log=True, cycle=cycle)
