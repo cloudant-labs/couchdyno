@@ -523,3 +523,34 @@ def _filter_ddoc(filt):
             FILTER_NAME : '''function(doc,req) { %s return ; }''' % payload
         }
     }
+
+
+# these work only with master branch
+#    res = {}
+#    skipset = set(["completed", "triggered"])
+#    if not also_errors:
+#        skipset.add("error")
+#    for doc in _yield_docs(rdb, prefix=PREFIX):
+#        did = doc.get("_id")
+#        _replication_state = doc.get('_replication_state','')
+#        if _replication_state in skipset:
+#            continue
+#        res[str(did)] = str(_replication_state)
+#    return res
+#
+#
+#@retry_till(lambda x : x == {}, 600, 10)
+#def wait_to_trigger(also_errors=True, rdb=None, srv=None):
+#    """
+#    Call check_untriggered repeteadly until it succeed or
+#    fails due to timeout.
+#    """
+#    return check_untriggered(also_errors=also_errors, rdb=rdb, srv=srv)
+#
+
+
+#def replicate_1_to_n_and_wait_to_trigger(n=1, reset=False, srv=None, rdb=None, filt=None):
+#    replicate_1_to_n(n=n, reset=reset, srv=srv, rdb=rdb, filt=filt)
+#    print "waiting for replication documents to trigger"
+#    wait_to_trigger(rdb=rdb, srv=srv)
+#    print "all replication documents triggered"
