@@ -170,7 +170,6 @@ def updocs(db, num=1, prefix=PAYLOAD_PREFIX, **kw):
     _clean_docs(prefix=prefix, db=db, startkey=start_did, endkey=end_did)
     def dociter():
         for i in range(start, end+1):
-            print "kw:",kw
             doc = copy.deepcopy(kw)
             doc['_id'] = prefix + '%04d' % i
             yield doc
