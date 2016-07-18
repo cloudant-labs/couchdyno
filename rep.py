@@ -170,6 +170,7 @@ def updocs(db, num=1, prefix=PAYLOAD_PREFIX, **kw):
     _clean_docs(prefix=prefix, db=db, startkey=start_did, endkey=end_did)
     def dociter():
         for i in range(start, end+1):
+            print "kw:",kw
             doc = copy.deepcopy(kw)
             doc['_id'] = prefix + '%04d' % i
             yield doc
@@ -350,8 +351,8 @@ def wait_till_source_and_target_equal(src_id, target_id, srv=None, log=True):
         print " > waiting till source_and_target equal %s, %s waited %.3f seconds" % (
             src_id, target_id, dt)
 
-def update_source_and_wait_to_propagate_to_targets(targets, src_id=1, num=1, srv=None, log=True, **kw):
-    update_source(i=src_id, num=num, srv=srv, **kw)
+
+def wait_till_n_targets_equal_source(targets, src_id, srv=None, log=True):
     t0 = time.time()
     for i in xrange(1, targets+1):
         print " > waiting for target ",i
@@ -361,12 +362,44 @@ def update_source_and_wait_to_propagate_to_targets(targets, src_id=1, num=1, srv
         print " > waiting to propagate changes from ",src_id,"to",targets," : %.3f sec."%dt
 
 
+def update_source_and_wait_to_propagate_to_targets(targets, src_id=1, num=1, srv=None, log=True, **kw):
+    update_source(i=src_id, num=num, srv=srv, **kw)
+    wait_till_n_targets_equal_source(targets=targets, src_id=src_id, srv=srv, log=log)
+
+
 def replicate_1_to_n_then_check_replication(n=1, cycles=1, num=1, reset=False,  srv=None, rdb=None, filt=None):
     replicate_1_to_n(n=n, reset=reset, srv=srv, rdb=rdb, filt=filt)
     for cycle in xrange(cycles):
         print ">>> update cycle",cycle," <<<"
         update_source_and_wait_to_propagate_to_targets(targets=n, num=num, srv=srv, log=True, cycle=cycle)
         print
+
+
+def replicate_1_to_n_normal(n, rdb, srv, filt, params=None):
+    if params is None:
+        params = {'continuous': False}
+    else:
+        params['continuous'] = False
+    def dociter():
+        for i in xrange(1,n+1):
+            yield _repdoc(src=1, tgt=i, srv=srv, filt=filt, params=params)
+    _clean_docs(prefix=PREFIX, db=rdb, srv=srv)
+    _rdb_bulk_updater(rdb, dociter)
+
+
+def update_source_then_replicate_1_to_n_normal_replications_and_wait_to_complete(
+        n=1, cycles=1, num=1, reset=False, srv=None, rdb=None, filt=None):
+    srv = getsrv(srv)
+    rdb = getrdb(rdb, srv=srv)
+    _create_n_dbs(n=1, prefix=SRC_PREFIX, reset=reset, srv=srv, filt=filt)
+    _create_n_dbs(n=n, prefix=TGT_PREFIX, reset=reset, srv=srv)
+    for cycle in xrange(1, n+1):
+        if (n>1):
+            print ">>> update cycle",cycle,"<<<"
+        update_source(i=1, num=num, srv=srv)
+        replicate_1_to_n_normal(n=n, srv=srv, rdb=rdb, filt=filt)
+        wait_to_complete(rdb=rdb)
+        wait_till_n_targets_equal_source(targets=n, src_id=1, srv=srv, log=True)
 
 
 ### Private Utility Functions ###
@@ -525,32 +558,19 @@ def _filter_ddoc(filt):
     }
 
 
-# these work only with master branch
-#    res = {}
-#    skipset = set(["completed", "triggered"])
-#    if not also_errors:
-#        skipset.add("error")
-#    for doc in _yield_docs(rdb, prefix=PREFIX):
-#        did = doc.get("_id")
-#        _replication_state = doc.get('_replication_state','')
-#        if _replication_state in skipset:
-#            continue
-#        res[str(did)] = str(_replication_state)
-#    return res
-#
-#
-#@retry_till(lambda x : x == {}, 600, 10)
-#def wait_to_trigger(also_errors=True, rdb=None, srv=None):
-#    """
-#    Call check_untriggered repeteadly until it succeed or
-#    fails due to timeout.
-#    """
-#    return check_untriggered(also_errors=also_errors, rdb=rdb, srv=srv)
-#
+def _get_incomplete(rdb):
+    res = {}
+    for doc in _yield_docs(rdb, prefix=PREFIX):
+        did = doc.get("_id")
+        _replication_state = doc.get('_replication_state','')
+        if _replication_state == "completed":
+            continue
+        res[str(did)] = str(_replication_state)
+    return res
 
 
-#def replicate_1_to_n_and_wait_to_trigger(n=1, reset=False, srv=None, rdb=None, filt=None):
-#    replicate_1_to_n(n=n, reset=reset, srv=srv, rdb=rdb, filt=filt)
-#    print "waiting for replication documents to trigger"
-#    wait_to_trigger(rdb=rdb, srv=srv)
-#    print "all replication documents triggered"
+
+@retry_till(lambda x : x == {}, 600, 10)
+def wait_to_complete(rdb=None):
+    return _get_incomplete(rdb=rdb)
+
