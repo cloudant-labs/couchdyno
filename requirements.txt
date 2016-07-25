@@ -1,2 +1,2 @@
-CouchDB==1.0
+CouchDB>=1.0.1
 ipython>=4.1.0
