@@ -2,8 +2,8 @@ from setuptools import setup
 
 setup(
     name="dyno",
-    version="0.2.0",
-    install_requires=["CouchDB","ipython"],
+    version="0.3.0",
+    install_requires=["CouchDB","ipython", "ConfigArgParse"],
     py_modules=["dyno","rep"],
     entry_points={
         'console_scripts': [
