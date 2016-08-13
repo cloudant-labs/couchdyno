@@ -1,3 +1,4 @@
 CouchDB>=1.1.0
 ipython>=5.0.0
 ConfigArgParse>=0.10.0
+pytest>=2.9.2
