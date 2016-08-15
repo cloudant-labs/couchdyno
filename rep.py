@@ -46,6 +46,7 @@ CFG_DEFAULTS = [
 FILTER_DOC = 'rdynofilterdoc'
 FILTER_NAME = 'rdynofilter'
 
+RETRY_DELAYS = [3,10,20,30,90,180,600]
 
 def replicate_1_to_n_and_compare(*args, **kw):
     r=Rep(cfg = kw.pop('cfg',None))
@@ -100,10 +101,11 @@ def getsrv(srv=None, timeout=0):
         return couchdb.Server(cfg.server_url)
     elif isinstance(srv, basestring):
         if timeout > 0:
-            sess = couchdb.Session(timeout=timeout)
+            sess = couchdb.Session(timeout=timeout, retry_delays=RETRY_DELAYS)
             return couchdb.Server(url=srv, session=sess, full_commit=False)
         else:
-            return couchdb.Server(url=srv, full_commit=False)
+            sess = couchdb.Session(retry_delays=RETRY_DELAYS)
+            return couchdb.Server(url=srv, session=sess, full_commit=False)
 
 
 def getdb(db, srv=None, create=True, reset=False):
@@ -349,6 +351,7 @@ class Rep(object):
     # Private methods
 
     def _setup_and_compare(self, normal, sr, tr, cycles, num, reset, rep_method, fill_callback):
+        print "cleaning existing docs from", self.rdb.name, "prefix:", self.prefix
         _clean_docs(db=self.rdb, srv=self.repsrv, prefix=self.prefix)
         self.create_dbs(sr, tr, reset=reset)
         if normal:
@@ -385,7 +388,7 @@ class Rep(object):
                     prev_s = s
                     continue
                 if log:
-                    print " > comparng source", prev_s, s
+                    print " > comparing source", prev_s, s
                 _wait_to_propagate(self.srcdb(prev_s), self.srcdb(s), self.prefix)
                 prev_s = s
         elif len(xrs) == 1 and len(xrt) == 1:
@@ -477,7 +480,7 @@ class RetryTimeoutExceeded(Exception):
     """Exceed retry timeout"""
 
 
-def _retry(check=bool, timeout=None, dt=5, log=True):
+def _retry(check=bool, timeout=None, dt=10, log=True):
     """
     Retry a function repeatedly until timeout has passed
     (or forever if timeout > 0). Wait between retries
@@ -507,10 +510,19 @@ def _retry(check=bool, timeout=None, dt=5, log=True):
         def retry(*args, **kw):
             t0 = time.time()
             tf = t0 + timeout if timeout > 0 else None
+            t = 1
             while True:
                 if tf is not None and time.time() > tf:
                     raise RetryTimeoutExceeded("Timeout : %s" % timeout)
-                r = f(*args, **kw)
+                try:
+                    r = f(*args, **kw)
+                except Exception,e:
+                    fn = _fname(f)
+                    print " > function", fn, "threw exception", e, "retrying"
+                    t += 1
+                    time.sleep(dt * 2**t)
+                    continue
+                t = 1
                 if (callable(check) and check(r)) or check==r:
                     if log:
                         fn = _fname(f)
@@ -566,12 +578,13 @@ def _updocs(db, num, prefix, rand_ids, **kw):
             yield doc
     for res in _bulk_updater(db, dociter):
         if res[0]:
+            print " > updated doc", db.name,  res[1], res[2]
             pass
         else:
             print " > ERROR:", db.name, res[1], res[2]
 
 
-def _yield_revs(db, prefix=None, all_docs_params=None, batchsize=5000):
+def _yield_revs(db, prefix=None, all_docs_params=None, batchsize=1000):
     """
     Read doc revisions from db (with possible prefix filtering)
     and yield tuples of (_id, rev). Do it in an efficient
@@ -650,7 +663,7 @@ def _clean_docs(prefix, db, startkey=None, endkey=None, srv=None):
             yield dict(_id=_id, _rev=_rev, _deleted=True)
     cnt = 0
     for res in _bulk_updater(db, dociter, batchsize=5000):
-        #print " > deleted doc:", res[1], res[0]
+        print " > deleted doc:", res[1], res[0]
         cnt += 1
     return cnt
 
@@ -743,7 +756,7 @@ def _get_incomplete(rdb, prefix):
     return res
 
 
-@_retry(lambda x : x == {}, 24*3600, 5, False)
+@_retry(lambda x : x == {}, 24*3600, 10, False)
 def _wait_to_complete(rdb, prefix):
     return _get_incomplete(rdb=rdb, prefix=prefix)
 
@@ -762,8 +775,8 @@ def _contains(db1, db2, prefix):
     """
     # first compare ids only, if those show differences, no reason to bother
     # with getting all the docs
-    s1 = set((_id[0] for _id in _yield_revs(db1, prefix=prefix, batchsize=5000)))
-    s2 = set((_id[0] for _id in _yield_revs(db2, prefix=prefix, batchsize=5000)))
+    s1 = set((_id[0] for _id in _yield_revs(db1, prefix=prefix, batchsize=1000)))
+    s2 = set((_id[0] for _id in _yield_revs(db2, prefix=prefix, batchsize=1000)))
     sdiff12 = s1 - s2
     if sdiff12:
         return False
@@ -782,7 +795,7 @@ def _contains(db1, db2, prefix):
     return True
 
 
-@_retry(True, 24*3600, 5, False)
+@_retry(True, 24*3600, 10, False)
 def _wait_to_propagate(db1, db2, prefix):
     return _contains(db1=db1, db2=db2, prefix=prefix)
 
