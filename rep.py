@@ -102,10 +102,10 @@ def getsrv(srv=None, timeout=0):
     elif isinstance(srv, basestring):
         if timeout > 0:
             sess = couchdb.Session(timeout=timeout, retry_delays=RETRY_DELAYS)
-            return couchdb.Server(url=srv, session=sess, full_commit=False)
+            return couchdb.Server(url=srv, session=sess)
         else:
             sess = couchdb.Session(retry_delays=RETRY_DELAYS)
-            return couchdb.Server(url=srv, session=sess, full_commit=False)
+            return couchdb.Server(url=srv, session=sess)
 
 
 def getdb(db, srv=None, create=True, reset=False):
@@ -363,7 +363,8 @@ class Rep(object):
                 rep_method(sr, tr, normal=True, db_per_doc=db_per_doc)
                 time.sleep(1)
                 self._wait_till_all_equal(sr, tr, log=True)
-                _wait_to_complete(rdb=self.rdb, prefix=self.prefix)
+                if not db_per_doc:
+                    _wait_to_complete(rdb=self.rdb, prefix=self.prefix)
         else:
             rep_method(sr, tr, normal=False, db_per_doc=db_per_doc)
             for cycle in xrange(1, cycles+1):
@@ -446,10 +447,10 @@ class Rep(object):
     def _clean_rep_docs(self, db_per_doc):
         prefix = self.prefix + '_repdb_'
         if db_per_doc:
-            print "cleaning up replicator dbs prefix:", prefix
+            print "    > cleaning up replicator dbs prefix:", prefix
             _clean_dbs(prefix=prefix, srv=self.repsrv)
         else:
-            print "cleaning existing docs from rep db:", self.rdb.name, "doc prefix:", self.prefix
+            print "    > cleaning existing docs from rep db:", self.rdb.name, "doc prefix:", self.prefix
             _clean_docs(db=self.rdb, srv=self.repsrv, prefix=self.prefix)
 
 
