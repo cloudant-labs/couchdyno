@@ -50,32 +50,33 @@ RETRY_DELAYS = [3,10,20,30,90,180,600]
 
 def replicate_1_to_n_and_compare(*args, **kw):
     r=Rep(cfg = kw.pop('cfg',None))
-    r.replicate_1_to_n_and_compare(*args, **kw)
+    return r.replicate_1_to_n_and_compare(*args, **kw)
 
 
 def replicate_n_to_1_and_compare(*args, **kw):
     r=Rep(cfg = kw.pop('cfg',None))
-    r.replicate_n_to_1_and_compare(*args, **kw)
+    return r.replicate_n_to_1_and_compare(*args, **kw)
 
 
 def  replicate_n_to_n_and_compare(*args, **kw):
     r=Rep(cfg = kw.pop('cfg',None))
-    r.replicate_n_to_n_and_compare(*args, **kw)
+    return r.replicate_n_to_n_and_compare(*args, **kw)
 
 
 def replicate_n_chain_and_compare(*args, **kw):
     r=Rep(cfg = kw.pop('cfg',None))
-    r.replicate_n_chain_and_compare(*args, **kw)
+    return r.replicate_n_chain_and_compare(*args, **kw)
 
 
 def replicate_all_and_compare(*args, **kw):
     r=Rep(cfg = kw.pop('cfg',None))
-    r.replicate_all_and_compare(*args, **kw)
+    return r.replicate_all_and_compare(*args, **kw)
 
 
 def clean(*args, **kw):
     r = Rep(cfg = kw.pop('cfg',None))
     r.clean(*args, **kw)
+    return r
 
 
 def getcfg():
@@ -154,7 +155,7 @@ def getrdb(db=None, srv=None, create=True, reset=False):
 
 class Rep(object):
 
-    def __init__(self,cfg=None):
+    def __init__(self, cfg=None):
         if cfg is None:
             cfg = getcfg()
         print
@@ -168,6 +169,7 @@ class Rep(object):
         rep_params['create_target'] = _2bool(cfg.create_target)
         rep_params['http_connections'] = int(cfg.http_connections)
         self.rep_params = rep_params
+        self.src_params = {}
         self.prefix = str(cfg.prefix)
         timeout = int(cfg.timeout)
         srv = getsrv(cfg.server_url, timeout=timeout)
@@ -194,6 +196,13 @@ class Rep(object):
         return getdb(_dbname(i, self.prefix), srv=self.tgtsrv)
 
 
+    def srcdocs(self,i=1):
+        res = []
+        db = self.srcdb(i=i)
+        for did in db:
+            res += [dict(db[did])]
+        return res
+
     def tgtdocs(self,i=1):
         res = []
         db = self.tgtdb(i=i)
@@ -202,9 +211,9 @@ class Rep(object):
         return res
 
 
-    def rdbdocs(self):
+    def repdocs(self):
         res = []
-        db = self.rdb()
+        db = self.rdb
         for did in db:
             if '_design' in did:
                 res += [{'_id':did}]
@@ -213,16 +222,22 @@ class Rep(object):
         return res
 
 
-    def fill(self, i=1, num=1, rand_ids=False, **kw):
+    def fill(self, i=1, num=1, rand_ids=False, src_params=None, attachments=None):
+        if src_params is None:
+            src_params = {}
+        extra_data = copy.deepcopy(self.src_params)
+        if src_params:
+            extra_data.update(copy.deepcopy(src_params))
+
         db = self.srcdb(i=i)
-        some_data = uuid.uuid1().hex
+        extra_data['some_data'] = uuid.uuid4().hex
         return _updocs(
             db=db,
             num=num,
             prefix=self.prefix,
             rand_ids = rand_ids,
-            some_data = some_data,
-            **kw)
+            attachments = attachments,
+            extra_data = extra_data)
 
 
     def clean(self):
@@ -231,24 +246,30 @@ class Rep(object):
         _clean_dbs(prefix=self.prefix+'_', srv=self.tgtsrv)
 
 
-    def create_dbs(self, source_range, target_range, reset=False, filt=None):
-        self._create_range_dbs(srv=self.srcsrv, numrange=source_range, reset=reset, filt=None)
+    def create_dbs(self, source_range, target_range, reset=False):
+        self._create_range_dbs(srv=self.srcsrv, numrange=source_range, reset=reset)
         if target_range and not self.rep_params.get('create_target'):
             self._create_range_dbs(srv=self.tgtsrv, numrange=target_range, reset=reset)
 
 
-    def replicate_n_to_n(self, sr, tr, normal=False, db_per_doc=False, filt=None):
+    def replicate_n_to_n(self, sr, tr, normal=False, db_per_doc=False, rep_params=None):
+        if rep_params is None:
+            rep_params = {}
         params = self.rep_params.copy()
+        params.update(rep_params)
         params['continuous'] = not normal
         ipairs = izip(_xrange(sr), _xrange(tr))
         def dociter():
             for s,t in ipairs:
-                yield self._repdoc(s, t, filt=filt, params=params)
+                yield self._repdoc(s, t, params=params)
         return _rdb_updater(self.repsrv, self.rdb, self.prefix, dociter, db_per_doc)
 
 
-    def replicate_1_to_n(self, sr, tr, normal=False, db_per_doc=False, filt=None):
+    def replicate_1_to_n(self, sr, tr, normal=False, db_per_doc=False, rep_params=None):
+        if rep_params is None:
+            rep_params = {}
         params = self.rep_params.copy()
+        params.update(rep_params)
         params['continuous'] = not normal
         xrs, xrt = _xrange(sr), _xrange(tr)
         assert len(xrs) == 1
@@ -256,12 +277,15 @@ class Rep(object):
         s = xrs[0]
         def dociter():
             for t in xrt:
-                yield self._repdoc(s, t, filt=filt, params=params)
+                yield self._repdoc(s, t, params=params)
         return _rdb_updater(self.repsrv, self.rdb, self.prefix, dociter, db_per_doc)
 
 
-    def replicate_n_to_1(self, sr, tr, normal=False, db_per_doc=False, filt=None):
+    def replicate_n_to_1(self, sr, tr, normal=False, db_per_doc=False, rep_params=None):
+        if rep_params is None:
+            rep_params = {}
         params = self.rep_params.copy()
+        params.update(rep_params)
         params['continuous'] = not normal
         xrs, xrt = _xrange(sr), _xrange(tr)
         assert len(xrs) >= 1
@@ -269,12 +293,15 @@ class Rep(object):
         t = xrt[0]
         def dociter():
             for s in xrs:
-                yield self._repdoc(s, t, filt=filt, params=params)
+                yield self._repdoc(s, t, params=params)
         return _rdb_updater(self.repsrv, self.rdb, self.prefix, dociter, db_per_doc)
 
 
-    def replicate_n_chain(self, sr, tr, normal=False, db_per_doc=False, filt=None):
+    def replicate_n_chain(self, sr, tr, normal=False, db_per_doc=False, rep_params=None):
+        if rep_params is None:
+            rep_params = {}
         params = self.rep_params.copy()
+        params.update(rep_params)
         params['continuous'] = not normal
         xrs = _xrange(sr)
         assert len(xrs) > 1
@@ -286,13 +313,16 @@ class Rep(object):
                     prev_s = s
                     continue
                 else:
-                    yield self._repdoc(prev_s, s, filt=filt, params=params)
+                    yield self._repdoc(prev_s, s, params=params)
                     prev_s = s
         return _rdb_updater(self.repsrv, self.rdb, self.prefix, dociter, db_per_doc)
 
 
-    def replicate_all(self, sr, tr, normal=False, db_per_doc=False, filt=None):
+    def replicate_all(self, sr, tr, normal=False, db_per_doc=False, rep_params=None):
+        if rep_params is None:
+            rep_params = {}
         params = self.rep_params.copy()
+        params.update(rep_params)
         params['continuous'] = not normal
         assert tr == 0 # target not used
         xrs = _xrange(sr)
@@ -300,57 +330,72 @@ class Rep(object):
         def dociter():
             for s1 in xrs:
                 for s2 in xrs:
-                    yield self._repdoc(s1, s2, filt=filt, params=params)
+                    yield self._repdoc(s1, s2, params=params)
         return _rdb_updater(self.repsrv, self.rdb, self.prefix, dociter, db_per_doc)
 
 
-    def replicate_1_to_n_and_compare(self, n=1, cycles=1, num=1, normal=False, db_per_doc=False, reset=False):
+    def replicate_1_to_n_and_compare(self, n=1, cycles=1, num=1, normal=False,
+                                     db_per_doc=False, rep_params=None, src_params=None,
+                                     attachments=None, reset=False):
         sr, tr = 1, (2, n+1)
         repmeth = self.replicate_1_to_n
         def fillcb():
-            self.fill(1, num=num)
-        self._setup_and_compare(normal, sr, tr, cycles, num, reset, repmeth, fillcb, db_per_doc)
+            self.fill(1, num=num, src_params=src_params, attachments=attachments)
+        return self._setup_and_compare(normal, sr, tr, cycles, num, reset, repmeth,
+                                fillcb, db_per_doc, rep_params)
 
 
-    def replicate_n_to_1_and_compare(self, n=1, cycles=1, num=1, normal=False, db_per_doc=False, reset=False):
+    def replicate_n_to_1_and_compare(self, n=1, cycles=1, num=1, normal=False,
+                                     db_per_doc=False, rep_params=None, src_params=None,
+                                     attachments=None, reset=False):
         sr, tr = (2, n+1), 1
         repmeth = self.replicate_n_to_1
         def fillcb():
             for src in _xrange(sr):
-                self.fill(src, num=num, rand_ids=True)
-        self._setup_and_compare(normal, sr, tr, cycles, num, reset, repmeth, fillcb, db_per_doc)
+                self.fill(src, num=num, rand_ids=True,  src_params=src_params, attachments=attachments)
+        return self._setup_and_compare(normal, sr, tr, cycles, num, reset, repmeth,
+                                fillcb, db_per_doc, rep_params)
 
 
-    def replicate_n_to_n_and_compare(self, n=1, cycles=1, num=1, normal=False, db_per_doc=False, reset=False):
+    def replicate_n_to_n_and_compare(self, n=1, cycles=1, num=1, normal=False,
+                                     db_per_doc=False, rep_params=None, src_params=None,
+                                     attachments=None, reset=False):
         sr, tr  = (1, n), (n+1, 2*n)
         repmeth = self.replicate_n_to_n
         def fillcb():
             for src in _xrange(sr):
-                self.fill(src, num=num)
-        self._setup_and_compare(normal, sr, tr, cycles, num, reset, repmeth, fillcb, db_per_doc)
+                self.fill(src, num=num, src_params=src_params, attachments=attachments)
+        return self._setup_and_compare(normal, sr, tr, cycles, num, reset, repmeth,
+                                fillcb, db_per_doc, rep_params)
 
 
-    def replicate_n_chain_and_compare(self, n=2, cycles=1, num=1, normal=False, db_per_doc=False, reset=False):
+    def replicate_n_chain_and_compare(self, n=2, cycles=1, num=1, normal=False,
+                                      db_per_doc=False, rep_params=None, src_params=None,
+                                      attachments=None, reset=False):
         if n < 2:
             raise ValueError("A chain requires a minimim of 2 nodes")
         sr, tr = (1, n), 0 # target not used here, only sources
         repmeth = self.replicate_n_chain
         def fillcb():
-            self.fill(1, num=num)
-        self._setup_and_compare(normal, sr, tr, cycles, num, reset, repmeth, fillcb, db_per_doc)
+            self.fill(1, num=num, src_params=src_params, attachments=attachments)
+        return self._setup_and_compare(normal, sr, tr, cycles, num, reset, repmeth,
+                                fillcb, db_per_doc, rep_params)
 
 
-    def replicate_all_and_compare(self, n=1, cycles=1, num=1, normal=False, db_per_doc=False, reset=False):
+    def replicate_all_and_compare(self, n=1, cycles=1, num=1, normal=False,
+                                  db_per_doc=False, rep_params=None, src_params=None,
+                                     attachments=None, reset=False):
         sr, tr = (1, n), 0 # target not used here, only sources
         repmeth = self.replicate_all
         def fillcb():
-            self.fill(1, num=num)
-        self._setup_and_compare(normal, sr, tr, cycles, num, reset, repmeth, fillcb, db_per_doc)
+            self.fill(1, num=num, src_params=src_params, attachments=attachments)
+        return self._setup_and_compare(normal, sr, tr, cycles, num, reset, repmeth,
+                                fillcb, db_per_doc, rep_params)
 
 
     # Private methods
 
-    def _setup_and_compare(self, normal, sr, tr, cycles, num, reset, rep_method, fill_callback, db_per_doc):
+    def _setup_and_compare(self, normal, sr, tr, cycles, num, reset, rep_method, fill_callback, db_per_doc, rep_params):
         self._clean_rep_docs(db_per_doc)
         self.create_dbs(sr, tr, reset=reset)
         if normal:
@@ -360,13 +405,13 @@ class Rep(object):
                     print ">>>>>> cycle", cycle, "<<<<<<"
                 fill_callback()
                 self._clean_rep_docs(db_per_doc)
-                rep_method(sr, tr, normal=True, db_per_doc=db_per_doc)
+                rep_method(sr, tr, normal=True, db_per_doc=db_per_doc, rep_params=rep_params)
                 time.sleep(1)
                 self._wait_till_all_equal(sr, tr, log=True)
                 if not db_per_doc:
                     _wait_to_complete(rdb=self.rdb, prefix=self.prefix)
         else:
-            rep_method(sr, tr, normal=False, db_per_doc=db_per_doc)
+            rep_method(sr, tr, normal=False, db_per_doc=db_per_doc, rep_params=rep_params)
             for cycle in xrange(1, cycles+1):
                 if cycles > 1:
                     print
@@ -374,6 +419,7 @@ class Rep(object):
                 fill_callback()
                 time.sleep(1)
                 self._wait_till_all_equal(sr, tr, log=True)
+        return self
 
 
     def _wait_till_all_equal(self, sr, tr, log=True):
@@ -418,7 +464,7 @@ class Rep(object):
             print " > changes propagated in at least %.1f sec" % dt
 
 
-    def _create_range_dbs(self, srv, numrange, reset=None, filt=None):
+    def _create_range_dbs(self, srv, numrange, reset=None):
         if isinstance(numrange, int) or isinstance(numrange, long):
             numrange = (numrange, numrange)
         assert isinstance(numrange, tuple)
@@ -428,10 +474,10 @@ class Rep(object):
         hi = int(hi)
         if lo > hi:
             lo = hi
-        _create_range_dbs(lo, hi, prefix=self.prefix, reset=reset, srv=srv, filt=filt)
+        _create_range_dbs(lo, hi, prefix=self.prefix, reset=reset, srv=srv)
 
 
-    def _repdoc(self, src, tgt, filt, params):
+    def _repdoc(self, src, tgt, params):
         did = self.prefix + '_%07d_%07d' % (src, tgt)
         src_dbname = _remote_url(self.srcsrv, _dbname(src, prefix=self.prefix))
         tgt_dbname = _remote_url(self.tgtsrv, _dbname(tgt, prefix=self.prefix))
@@ -439,18 +485,18 @@ class Rep(object):
         doc.update(params)
         doc.update(_id=did, source=src_dbname, target=tgt_dbname)
         #print "     ",src_dbname,"->",tgt_dbname
-        if filt:
-            doc['filter'] = '%s/%s' % (FILTER_DOC, FILTER_NAME)
+        #if filt:
+        #    doc['filter'] = '%s/%s' % (FILTER_DOC, FILTER_NAME)
         return doc
 
 
     def _clean_rep_docs(self, db_per_doc):
         prefix = self.prefix + '_repdb_'
         if db_per_doc:
-            print "    > cleaning up replicator dbs prefix:", prefix
+            print " > cleaning up replicator dbs prefix:", prefix
             _clean_dbs(prefix=prefix, srv=self.repsrv)
         else:
-            print "    > cleaning existing docs from rep db:", self.rdb.name, "doc prefix:", self.prefix
+            print " > cleaning existing docs from rep db:", self.rdb.name, "doc prefix:", self.prefix
             _clean_docs(db=self.rdb, srv=self.repsrv, prefix=self.prefix)
 
 
@@ -569,7 +615,7 @@ def _xrange(r):
 
 
 
-def _updocs(db, num, prefix, rand_ids, **kw):
+def _updocs(db, num, prefix, rand_ids, attachments, extra_data):
     """
     Update a set of docs in a database using an incremental
     scheme with a prefix.
@@ -578,7 +624,7 @@ def _updocs(db, num, prefix, rand_ids, **kw):
     _clean_docs(prefix=prefix, db=db, startkey=prefix+'_', endkey=prefix+'_zzz')
     def dociter():
         for i in range(start, end+1):
-            doc = copy.deepcopy(kw)
+            doc = extra_data.copy()
             _id = prefix + '_%07d' % i
             if rand_ids:
                 _id += '_' + uuid.uuid4().hex
@@ -586,10 +632,35 @@ def _updocs(db, num, prefix, rand_ids, **kw):
             yield doc
     for res in _bulk_updater(db, dociter):
         if res[0]:
-            print " > updated doc", db.name,  res[1], res[2]
+            doc_id = res[1]
+            doc_rev = res[2]
+            print " > updated doc", db.name, doc_id, doc_rev
+            if attachments:
+                _put_attachments(db, doc_id, doc_rev, attachments)
             pass
         else:
             print " > ERROR:", db.name, res[1], res[2]
+
+
+def _put_attachments(db, doc_id, doc_rev, attachments):
+    if attachments is None:
+        attachments = []
+    if isinstance(attachments, int) or isinstance(attachments, long):
+        attachments = "x"*attachments
+    if isinstance(attachments, basestring):
+        attachments = [("att1", attachments)]
+    if isinstance(attachments, dict):
+        attachments = attachments.iteritems()
+    doc = {'_id':doc_id, '_rev':doc_rev}
+    for (name, val) in attachments:
+        name_str = str(name)
+        if isinstance(val, int) or isinstance(val, long):
+            val_str = "x"*val
+        else:
+            val_str = str(val)
+        print "   > put attachment:", db.name, doc, name_str, len(val_str)
+        db.put_attachment(doc, val_str, filename=name_str)
+
 
 
 def _yield_revs(db, prefix=None, all_docs_params=None, batchsize=1000):
@@ -650,7 +721,7 @@ def _bulk_updater(db, docit, batchsize=500):
 def _rdb_updater(repsrv, rdb, prefix, dociter, db_per_doc):
     if db_per_doc:
         for n, doc in enumerate(dociter()):
-            _rdb_and_doc(repsrv, prefix, n, doc)
+            _rdb_and_doc(repsrv, prefix, n+1, doc)
         return
     ok, fail = 0, 0
     for res in _bulk_updater(rdb, dociter):
@@ -697,11 +768,11 @@ def _fname(f):
        return str(f)
 
 
-def _create_range_dbs(lo, hi, prefix, reset=False, srv=None, filt=None):
+def _create_range_dbs(lo, hi, prefix, reset=False, srv=None):
     srv = getsrv(srv)
-    ddoc_id = '_design/%s' % FILTER_DOC
-    if filt is not None:
-        filt = _filter_ddoc(filt)
+    #ddoc_id = '_design/%s' % FILTER_DOC
+    #if filt is not None:
+    #    filt = _filter_ddoc(filt)
     existing_dbs = set(srv)
     want_dbs = set((_dbname(i, prefix) for i in xrange(lo, hi+1)))
     if reset:
@@ -720,9 +791,9 @@ def _create_range_dbs(lo, hi, prefix, reset=False, srv=None, filt=None):
     print "Creating",len(missing_list),"databases"
     #t0 = time.time()
     for dbname in missing_list:
-        db = srv.create(dbname)
-        print "  > created",dbname
-        _maybe_add_filter(db=db, ddoc_id=ddoc_id, filtdoc=filt)
+        srv.create(dbname)
+        print "  > created", dbname
+        #_maybe_add_filter(db=db, ddoc_id=ddoc_id, filtdoc=filt)
     #dt = time.time() - t0
     #print "Finished creating", len(missing_list), "dbs in %.1f sec" % dt
 
