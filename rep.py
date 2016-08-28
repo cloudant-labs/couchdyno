@@ -43,9 +43,6 @@ CFG_DEFAULTS = [
 ]
 
 
-FILTER_DOC = 'rdynofilterdoc'
-FILTER_NAME = 'rdynofilter'
-
 RETRY_DELAYS = [3,10,20,30,90,180,600]
 
 def replicate_1_to_n_and_compare(*args, **kw):
@@ -240,6 +237,17 @@ class Rep(object):
             extra_data = extra_data)
 
 
+    def updoc(self, db, doc):
+        if doc is None:
+            return
+        _id = doc['_id']
+        doc_copy = doc.copy()
+        if _id in db:
+            existing_doc = db[_id]
+            doc_copy['_rev'] = existing_doc['_rev']
+        db[_id] = doc_copy
+
+
     def clean(self):
         _clean_docs(prefix=self.prefix, db=self.rdb)
         _clean_dbs(prefix=self.prefix+'_', srv=self.srcsrv)
@@ -250,6 +258,12 @@ class Rep(object):
         self._create_range_dbs(srv=self.srcsrv, numrange=source_range, reset=reset)
         if target_range and not self.rep_params.get('create_target'):
             self._create_range_dbs(srv=self.tgtsrv, numrange=target_range, reset=reset)
+
+
+    def sync_filter(self, filter_ddoc, sr):
+        lo, hi = _db_range_validate(sr)
+        for i in xrange(lo, hi+1):
+            self.updoc(self.srcdb(i), filter_ddoc)
 
 
     def replicate_n_to_n(self, sr, tr, normal=False, db_per_doc=False, rep_params=None):
@@ -336,68 +350,166 @@ class Rep(object):
 
     def replicate_1_to_n_and_compare(self, n=1, cycles=1, num=1, normal=False,
                                      db_per_doc=False, rep_params=None, src_params=None,
-                                     attachments=None, reset=False):
+                                     attachments=None, reset=False, filter_js=None,
+                                     filter_mango=None, filter_doc_ids=None, filter_view=None,
+                                     filter_query_params=None):
         sr, tr = 1, (2, n+1)
         repmeth = self.replicate_1_to_n
+        filter_params = dict(js=filter_js, mango=filter_mango, doc_ids=filter_doc_ids,
+                             view=filter_view, query_params=filter_query_params)
         def fillcb():
             self.fill(1, num=num, src_params=src_params, attachments=attachments)
         return self._setup_and_compare(normal, sr, tr, cycles, num, reset, repmeth,
-                                fillcb, db_per_doc, rep_params)
+                                       fillcb, db_per_doc, rep_params, filter_params)
 
 
     def replicate_n_to_1_and_compare(self, n=1, cycles=1, num=1, normal=False,
                                      db_per_doc=False, rep_params=None, src_params=None,
-                                     attachments=None, reset=False):
+                                     attachments=None, reset=False, filter_js=None,
+                                     filter_mango=None, filter_doc_ids=None, filter_view=None,
+                                     filter_query_params=None):
         sr, tr = (2, n+1), 1
         repmeth = self.replicate_n_to_1
+        filter_params = dict(js=filter_js, mango=filter_mango, doc_ids=filter_doc_ids,
+                             view=filter_view, query_params=filter_query_params)
         def fillcb():
             for src in _xrange(sr):
-                self.fill(src, num=num, rand_ids=True,  src_params=src_params, attachments=attachments)
+                self.fill(src, num=num, rand_ids=True,  src_params=src_params,
+                          attachments=attachments)
         return self._setup_and_compare(normal, sr, tr, cycles, num, reset, repmeth,
-                                fillcb, db_per_doc, rep_params)
+                                fillcb, db_per_doc, rep_params, filter_params)
 
 
     def replicate_n_to_n_and_compare(self, n=1, cycles=1, num=1, normal=False,
                                      db_per_doc=False, rep_params=None, src_params=None,
-                                     attachments=None, reset=False):
+                                     attachments=None, reset=False, filter_js=None,
+                                     filter_mango=None, filter_doc_ids=None, filter_view=None,
+                                     filter_query_params=None):
         sr, tr  = (1, n), (n+1, 2*n)
         repmeth = self.replicate_n_to_n
+        filter_params = dict(js=filter_js, mango=filter_mango, doc_ids=filter_doc_ids,
+                             view=filter_view, query_params=filter_query_params)
         def fillcb():
             for src in _xrange(sr):
                 self.fill(src, num=num, src_params=src_params, attachments=attachments)
         return self._setup_and_compare(normal, sr, tr, cycles, num, reset, repmeth,
-                                fillcb, db_per_doc, rep_params)
+                                fillcb, db_per_doc, rep_params, filter_params)
 
 
     def replicate_n_chain_and_compare(self, n=2, cycles=1, num=1, normal=False,
                                       db_per_doc=False, rep_params=None, src_params=None,
-                                      attachments=None, reset=False):
+                                      attachments=None, reset=False, filter_js=None,
+                                      filter_mango=None, filter_doc_ids=None, filter_view=None,
+                                      filter_query_params=None):
         if n < 2:
             raise ValueError("A chain requires a minimim of 2 nodes")
         sr, tr = (1, n), 0 # target not used here, only sources
         repmeth = self.replicate_n_chain
+        filter_params = dict(js=filter_js, mango=filter_mango, doc_ids=filter_doc_ids,
+                             view=filter_view, query_params=filter_query_params)
         def fillcb():
             self.fill(1, num=num, src_params=src_params, attachments=attachments)
         return self._setup_and_compare(normal, sr, tr, cycles, num, reset, repmeth,
-                                fillcb, db_per_doc, rep_params)
+                                fillcb, db_per_doc, rep_params, filter_params)
 
 
     def replicate_all_and_compare(self, n=1, cycles=1, num=1, normal=False,
                                   db_per_doc=False, rep_params=None, src_params=None,
-                                     attachments=None, reset=False):
+                                  attachments=None, reset=False, filter_js=None,
+                                  filter_mango=None, filter_doc_ids=None, filter_view=None,
+                                  filter_query_params=None):
         sr, tr = (1, n), 0 # target not used here, only sources
         repmeth = self.replicate_all
+        filter_params = dict(js=filter_js, mango=filter_mango, doc_ids=filter_doc_ids,
+                             view=filter_view, query_params=filter_query_params)
         def fillcb():
             self.fill(1, num=num, src_params=src_params, attachments=attachments)
         return self._setup_and_compare(normal, sr, tr, cycles, num, reset, repmeth,
-                                fillcb, db_per_doc, rep_params)
+                                fillcb, db_per_doc, rep_params, filter_params)
 
 
     # Private methods
 
-    def _setup_and_compare(self, normal, sr, tr, cycles, num, reset, rep_method, fill_callback, db_per_doc, rep_params):
+    def _filter_ddoc_and_rep_params(self, filter_params, rep_params):
+        params = filter_params.copy()
+        query_params = params.pop('query_params', None)
+        assert set(params.keys()) == set(['js', 'mango', 'view', 'doc_ids'])
+        specified = dict([(k,v) for (k,v) in params.items()  if v is not None])
+        if not specified:
+            return (None, rep_params)
+        if len(specified) > 1:
+            raise ValueError("Only 1 filter can be specified %s" % specified)
+        fname, fbody = specified.popitem()
+        ddoc = None
+        if fname is 'js':
+            ddoc, rep_params_up = self._filter_js(fbody, query_params=query_params)
+        if fname is 'mango':
+            ddoc, rep_params_up = self._filter_mango(fbody)
+        if fname is 'doc_ids':
+            ddoc, rep_params_up = self._filter_doc_ids(fbody)
+        if fname is 'view':
+            ddoc, rep_params_up = self._filter(fbody)
+        if rep_params is not None:
+            rep_params_up.update(rep_params)
+        return (ddoc, rep_params_up)
+
+
+    def _filter_js(self, filter_body, query_params=None):
+        assert isinstance(filter_body, basestring), "Filter body must a string"
+        filter_doc = '%s_filterdoc' % self.prefix
+        filter_name = '%s_filtername' % self.prefix
+        ddoc = {
+            "_id" : '_design/%s' % filter_doc,
+            "filters" : {
+                filter_name : filter_body
+            }
+        }
+        rep_params = {
+            "filter" : "%s/%s" % (filter_doc, filter_name)
+        }
+        if query_params:
+            rep_params['query_params'] = query_params
+        return (ddoc, rep_params)
+
+
+    def _filter_mango(self, selector_obj):
+        assert isinstance(selector_obj, dict)
+        return (None, {"selector": selector_obj})
+
+
+    def _filter_doc_ids(self, doc_ids):
+        assert isinstance(doc_ids, list)
+        return (None, {"doc_ids": doc_ids})
+
+
+    def _filter_view(self, map_body):
+        assert isinstance(map_body, basestring), "View map must be a string"
+        view_doc = '%s_viewdoc' % self.prefix
+        view_name = '%s_viewname' % self.prefix
+        ddoc = {
+            "_id" : "_design/%s" % view_doc,
+            "views" : {
+                view_name : {
+                    "map" : map_body
+                }
+            }
+        }
+        rep_params = {
+            "filter" : "_view",
+            "query_params" : "%s/%s" % (view_doc, view_name)
+        }
+        return (ddoc, rep_params)
+
+
+
+
+
+    def _setup_and_compare(self, normal, sr, tr, cycles, num, reset, rep_method,
+                           fill_callback, db_per_doc, rep_params, filter_params):
+        filter_ddoc, rep_params = self._filter_ddoc_and_rep_params(filter_params, rep_params)
         self._clean_rep_docs(db_per_doc)
         self.create_dbs(sr, tr, reset=reset)
+        self.sync_filter(filter_ddoc, sr)
         if normal:
             for cycle in xrange(1, cycles+1):
                 if cycles > 1:
@@ -465,15 +577,7 @@ class Rep(object):
 
 
     def _create_range_dbs(self, srv, numrange, reset=None):
-        if isinstance(numrange, int) or isinstance(numrange, long):
-            numrange = (numrange, numrange)
-        assert isinstance(numrange, tuple)
-        assert len(numrange) == 2
-        lo, hi = numrange
-        lo = int(lo)
-        hi = int(hi)
-        if lo > hi:
-            lo = hi
+        lo, hi = _db_range_validate(numrange)
         _create_range_dbs(lo, hi, prefix=self.prefix, reset=reset, srv=srv)
 
 
@@ -484,11 +588,7 @@ class Rep(object):
         doc = self.rep_params.copy()
         doc.update(params)
         doc.update(_id=did, source=src_dbname, target=tgt_dbname)
-        #print "     ",src_dbname,"->",tgt_dbname
-        #if filt:
-        #    doc['filter'] = '%s/%s' % (FILTER_DOC, FILTER_NAME)
         return doc
-
 
     def _clean_rep_docs(self, db_per_doc):
         prefix = self.prefix + '_repdb_'
@@ -602,6 +702,18 @@ def _clean_dbs(prefix, srv):
             cnt += 1
     return cnt
 
+
+def _db_range_validate(numrange):
+    if isinstance(numrange, int) or isinstance(numrange, long):
+        numrange = (numrange, numrange)
+    assert isinstance(numrange, tuple)
+    assert len(numrange) == 2
+    lo, hi = numrange
+    lo = int(lo)
+    hi = int(hi)
+    if lo > hi:
+        lo = hi
+    return lo, hi
 
 def _xrange(r):
     if isinstance(r, int) or isinstance(r, long):
@@ -770,9 +882,6 @@ def _fname(f):
 
 def _create_range_dbs(lo, hi, prefix, reset=False, srv=None):
     srv = getsrv(srv)
-    #ddoc_id = '_design/%s' % FILTER_DOC
-    #if filt is not None:
-    #    filt = _filter_ddoc(filt)
     existing_dbs = set(srv)
     want_dbs = set((_dbname(i, prefix) for i in xrange(lo, hi+1)))
     if reset:
@@ -793,20 +902,6 @@ def _create_range_dbs(lo, hi, prefix, reset=False, srv=None):
     for dbname in missing_list:
         srv.create(dbname)
         print "  > created", dbname
-        #_maybe_add_filter(db=db, ddoc_id=ddoc_id, filtdoc=filt)
-    #dt = time.time() - t0
-    #print "Finished creating", len(missing_list), "dbs in %.1f sec" % dt
-
-
-def _maybe_add_filter(db, ddoc_id, filtdoc):
-    if not filtdoc:
-        return
-    filt2 = copy.deepcopy(filtdoc)
-    if ddoc_id in db:
-        oldd = db[ddoc_id]
-        rev = oldd['_rev']
-        filt2['_rev'] = rev
-    db[ddoc_id] = filt2
 
 
 def _remote_url(srv, dbname):
@@ -816,22 +911,6 @@ def _remote_url(srv, dbname):
     usr, pwd = srv.resource.credentials
     schema,rest = url.split('://')
     return '://'.join([schema, '%s:%s@%s/%s' % (usr, pwd, rest, dbname)])
-
-
-def _filter_ddoc(filt):
-    if filt is None:
-        return None
-    if isinstance(filt, (int,long)):
-        payload = ';' * filt
-        filter_str = '''function(doc,req) { %s return ; }''' % payload
-    else:
-        assert isinstance(filt, basestring)
-        filter_str = filt
-    return {
-        "filters": {
-            FILTER_NAME : filter_str
-        }
-    }
 
 
 def _get_incomplete(rdb, prefix):
