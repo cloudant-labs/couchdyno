@@ -5,7 +5,7 @@ import rep
 TEST_ARGS = [
     (normal, attachments, num)
     for normal in [False, True]
-    for attachments in [ 64, 100000, [(i,1) for i in xrange(1,10)] ]
+    for attachments in [ 64, 100000, [(i,1) for i in xrange(1,11)] ]
     for num in [1, 100]
 ]
 

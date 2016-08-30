@@ -13,7 +13,7 @@ else
     echo "Could not find virtualenv. Install virtualenv then try again"
     exit 1
 fi
-    
+
 if [ ! -f ./venv/bin/dyno-execute ]; then
     rm -rf venv
     virtualenv venv

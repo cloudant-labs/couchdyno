@@ -1,5 +1,6 @@
 #!/bin/sh
 
-./build.sh
-./venv/bin/pytest ./rep_tests/
+set -e
+./build.sh > /dev/null
+./venv/bin/pytest ./tests/ "$@"
 

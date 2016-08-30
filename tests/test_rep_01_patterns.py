@@ -36,8 +36,8 @@ def test_n_chain_pattern(n, normal, db_per_doc, num):
 
 
 def test_all_pattern_continuous():
-    rep.replicate_n_chain_and_compare(n=25, cycles=2, num=10, normal=False)
+    rep.replicate_n_chain_and_compare(n=10, cycles=2, num=10, normal=False)
 
 
 def test_all_pattern_normal():
-    rep.replicate_n_chain_and_compare(n=25, cycles=2, num=10, normal=True)
+    rep.replicate_n_chain_and_compare(n=10, cycles=2, num=10, normal=True)

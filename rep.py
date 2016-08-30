@@ -152,7 +152,8 @@ def getsrv(srv=None, timeout=0):
         return srv
     elif srv is None:
         cfg = getcfg()
-        return couchdb.Server(cfg.server_url)
+        sess = couchdb.Session(retry_delays=RETRY_DELAYS)
+        return couchdb.Server(cfg.server_url, session=sess)
     elif isinstance(srv, basestring):
         if timeout > 0:
             sess = couchdb.Session(timeout=timeout, retry_delays=RETRY_DELAYS)
@@ -229,7 +230,7 @@ class Rep(object):
         if cfg is None:
             cfg = getcfg()
         print
-        print "configuration:", cfg
+        print "configuration:"
         for k, v in sorted(cfg._get_kwargs()):
             print "  ", k, "=", v
         print
@@ -1180,26 +1181,45 @@ def _updocs(db, num, prefix, rand_ids, attachments, extra_data):
     """
     start, end = 1, num
     _clean_docs(prefix=prefix, db=db, startkey=prefix+'_', endkey=prefix+'_zzz')
+    conflicts = set()
+    retry = True
+    to_attach = {}
 
-    def dociter():
-        for i in range(start, end+1):
-            doc = extra_data.copy()
-            _id = prefix + '_%07d' % i
-            if rand_ids:
-                _id += '_' + uuid.uuid4().hex
-            doc['_id'] = _id
-            yield doc
+    while retry:
 
-    for res in _bulk_updater(db, dociter):
-        if res[0]:
-            doc_id = res[1]
-            doc_rev = res[2]
-            print " > updated doc", db.name, doc_id, doc_rev
-            if attachments:
-                _put_attachments(db, doc_id, doc_rev, attachments)
-            pass
+        def dociter():
+            if conflicts:
+                for _id in conflicts.pop():
+                    doc = extra_data.copy()
+                    yield doc
+            else:
+                for i in range(start, end+1):
+                    _id = prefix + '_%07d' % i
+                    doc = extra_data.copy()
+                    if rand_ids:
+                        _id += '_' + uuid.uuid4().hex
+                        doc['_id'] = _id
+                    yield doc
+
+        for res in _bulk_updater(db, dociter):
+            if res[0]:
+                doc_id = res[1]
+                doc_rev = res[2]
+                print " > updated doc", db.name, doc_id, doc_rev
+                if 'conflict' in doc_rev:
+                    conflicts.add(doc_id)
+                    continue
+                if attachments:
+                    to_attach[doc_id] = doc_rev
+            else:
+                print " > ERROR:", db.name, res[1], res[2]
+        if conflicts:
+            print " > WARNING: found", len(conflicts), " conflicts, retrying to add them"
         else:
-            print " > ERROR:", db.name, res[1], res[2]
+            retry = False
+
+    for _id, _rev in to_attach.iteritems():
+        _put_attachments(db, _id, _rev, attachments)
 
 
 def _put_attachments(db, doc_id, doc_rev, attachments):
