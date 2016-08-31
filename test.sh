@@ -2,5 +2,5 @@
 
 set -e
 ./build.sh > /dev/null
-./venv/bin/pytest ./tests/ "$@"
+./venv/bin/pytest ./tests/ -v "$@"
 

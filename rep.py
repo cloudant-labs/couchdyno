@@ -1251,7 +1251,7 @@ def _put_attachments(db, doc_id, doc_rev, attachments):
         db.put_attachment(doc, val_str, filename=name_str)
 
 
-def _yield_revs(db, prefix=None, all_docs_params=None, batchsize=1000):
+def _yield_revs(db, prefix=None, all_docs_params=None, batchsize=500):
     """
     Read doc revisions from db (with possible prefix filtering)
     and yield tuples of (_id, rev). Do it in an efficient
@@ -1267,7 +1267,7 @@ def _yield_revs(db, prefix=None, all_docs_params=None, batchsize=1000):
         yield (str(r.id), str(r.value['rev']))
 
 
-def _yield_docs(db, prefix=None, batchsize=1000):
+def _yield_docs(db, prefix=None, batchsize=500):
     """
     Read docs from db (with possible prefix filtering)
     and yield docs
@@ -1347,7 +1347,7 @@ def _clean_docs(prefix, db, startkey=None, endkey=None, srv=None):
             yield dict(_id=_id, _rev=_rev, _deleted=True)
 
     cnt = 0
-    for res in _bulk_updater(db, dociter, batchsize=5000):
+    for res in _bulk_updater(db, dociter, batchsize=1000):
         print " > deleted doc:", res[1], res[0]
         cnt += 1
     return cnt
@@ -1426,8 +1426,8 @@ def _contains(db1, db2, prefix):
     """
     # first compare ids only, if those show differences, no reason to bother
     # with getting all the docs
-    s1 = set((_id[0] for _id in _yield_revs(db1, prefix=prefix, batchsize=1000)))
-    s2 = set((_id[0] for _id in _yield_revs(db2, prefix=prefix, batchsize=1000)))
+    s1 = set((_id[0] for _id in _yield_revs(db1, prefix=prefix, batchsize=500)))
+    s2 = set((_id[0] for _id in _yield_revs(db2, prefix=prefix, batchsize=500)))
     sdiff12 = s1 - s2
     if sdiff12:
         return False
