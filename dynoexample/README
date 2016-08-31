@@ -1,0 +1,5 @@
+This is an example project which uses dyno as a dependency
+
+Run ./build.sh to fetch dyno as a dependency. Then run ./mytest.py which imports and uses "rep" module.
+
+./build.sh uses knife data bag for Cloudant's private pypi server, make sure knife is installed properly for it to work.
