@@ -10,10 +10,10 @@ setup(
     packages = ["dyno"],
     entry_points={
         'console_scripts': [
-            'dyno-info=dyno:info',
-            'dyno-setup=dyno:setup',
-            'dyno-execute=dyno:execute',
-            'rep=rep:_interactive',
+            'dyno-info=dyno.dyno:info',
+            'dyno-setup=dyno.dyno:setup',
+            'dyno-execute=dyno.dyno:execute',
+            'rep=dyno.rep:_interactive',
         ]
     }
 )

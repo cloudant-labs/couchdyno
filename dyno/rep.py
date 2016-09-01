@@ -1071,7 +1071,7 @@ def _interactive():
     print "  * rep.getsrv() # get a CouchDB Server instance"
     print
     import IPython
-    auto_imports = "import rep; from rep import getsrv, getdb, getrdb, Rep; import couchdb"
+    auto_imports = "from dyno import rep; from dyno.rep import getsrv, getdb, getrdb, Rep; import couchdb"
     IPython.start_ipython(argv=["-c", "'%s'" % auto_imports, "-i"])
 
 
