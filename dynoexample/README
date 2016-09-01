@@ -4,5 +4,4 @@ This is an example project which uses dyno as a dependency.
 
 Then run ./mytest.py which imports and uses "rep" module to run a simple test.
 
-Dyno dependency is specified as a version tag in Github. When deploying to a test server, make sure it
-has read HTTPS access to the repo.
+Dyno dependency is specified as a version tag in Github. When deploying to a test server, make sure it has read access to the repo.
