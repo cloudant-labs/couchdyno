@@ -1,0 +1,13 @@
+1. Update setup.py version (for consistency)
+2.  $ git tag vX.Y.Z
+3.  $ git tag --push
+4. Update requirements.txt of dependents:
+  git+https://github.com/cloudant/dyno.git@vX.Y.Z
+
+
+
+
+
+
+
+
