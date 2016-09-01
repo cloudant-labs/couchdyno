@@ -25,7 +25,7 @@ class Cluster(object):
                  settings=None,  # [(section, key, val),...] settings
                  user=USER,
                  password=PASSWORD,
-                 make_before_start=False # Run make before each start?
+                 reset_data=True # Reset data before start?
     ):
         """
         Instantiate a Cluster configuration. This doesn't run the cluster just
@@ -44,7 +44,7 @@ class Cluster(object):
         run("which make", stdout=self.devnull)
         run("which rsync", stdout=self.devnull)
         run("which pkill", stdout=self.devnull)
-        self._maybe_configure_and_make(src)
+        self._maybe_configure(src)
         self.orig_tmpdir = tmpdir
         self.tmpdir = self._tmpdir(tmpdir)
         self.src = src
@@ -55,7 +55,7 @@ class Cluster(object):
         self.workdir = None
         self.url = None
         self.port = N1_PORT
-        self.make_before_start = make_before_start
+        self.reset_data = reset_data
         self._maybe_register_atexit()
 
     @property
@@ -70,6 +70,7 @@ class Cluster(object):
           c = Cluster(...)
           with c.running([('replicator', 'max_jobs', '15')]) as crun:
               db = couchdb.Server(crun.url)
+              crun.stop_node(1)
         """
         return _Ctx(self, settings=settings)
 
@@ -86,9 +87,15 @@ class Cluster(object):
         self.stop()
         workdir = self._cp(self.tmpdir)
         print "Working directory:", workdir
-        if self.make_before_start:
-            print "Running make."
-            run("make", cwd=workdir, stdout=self.devnull)
+        print "Running make."
+        run("make", cwd=workdir, stdout=self.devnull)
+        if self.reset_data:
+            data_dir = os.path.join(workdir, "dev", "lib")
+            print "Resetting data dir: ", data_dir
+            run("rm -rf %s/*" % data_dir)
+            log_dir = os.path.join(workdir, "dev", "logs")
+            print "Cleaning logs:", log_dir
+            run("rm -rf %s/*" % log_dir)
         self._checkport(self.port)
         self._override_settings(workdir, settings)
         cmd = "dev/run --admin=%s:%s" % (self.user, self.password)
@@ -104,15 +111,15 @@ class Cluster(object):
         self._running.add(self)
         self.workdir = workdir
         self.url = 'http://%s:%s@localhost:%s' % (self.user, self.password, self.port)
-        return self.url
+        return self
 
     def stop(self):
         if not self.alive:
             print "Trying to stop other dev cluster instances..."
-            kill_dev_run = "pkill -f 'dev/run --admin='"
-            run(kill_dev_run, stdout=self.devnull, skip_check=True)
             kill_nodes = "pkill -f 'beam.smp.*127.0.0.1 -setcookie monster'"
             run(kill_nodes, stdout=self.devnull, skip_check=True)
+            kill_dev_run = "pkill -f 'dev/run --admin='"
+            run(kill_dev_run, stdout=self.devnull, skip_check=True)
             self._running.discard(self)
             return
         self.proc.terminate()
@@ -129,6 +136,13 @@ class Cluster(object):
         self.proc = None
         self.workdir = None
         self.url = None
+        return self
+
+    def stop_node(self,node_id):
+        if not isinstance(node_id, int):
+            raise ValueError("Node ID should be %s an integer" % node_id)
+        kill_cmd = "pkill -f 'beam.smp.*node%s@127.0.0.1 -setcookie monster'" % node_id
+        return run(kill_cmd, stdout=self.devnull, skip_check=True)
 
     # Private methods
 
@@ -143,7 +157,7 @@ class Cluster(object):
     def __str__(self):
         return "Cluster src:%s workdir:%s port1:%s" % (self.src, self.workdir, self.port)
     __repr__ = __str__
-    
+
     @classmethod
     def _atexit_cleanup(cls):
         print "Running atexit cleanup hook."
@@ -157,13 +171,21 @@ class Cluster(object):
             print "Registered atexit cleanup hook"
             self.__class__._registered = True
 
-    def _checkport(self, port):
-        s = socket.socket()
-        try:
-            s.bind(('127.0.0.1', port))
-            s.close()
-        except socket.error:
-            raise Exception("Looks like port %s is already in use " % port)
+    def _checkport(self, port, tries=10):
+        while tries > 0:
+            s = socket.socket()
+            try:
+                s.bind(('127.0.0.1', port))
+                s.close()
+                return
+            except socket.error,e:
+                if tries > 0:
+                    time.sleep(5)
+                    tries -= 1
+                    print "Port 15984 is in use, waiting. Tries left:", tries
+                    continue
+                else:
+                    raise Exception("Looks like port %s is already in use " % port)
 
     def _tmpdir(self, tmpdir):
         if tmpdir is None:
@@ -174,7 +196,7 @@ class Cluster(object):
         self._validate_dir(tmpdir)
         return tmpdir
 
-    def _maybe_configure_and_make(self, src):
+    def _maybe_configure(self, src):
         src_dir = os.path.join(src, "src")
         if not os.path.exists(src_dir):
             print "Running './configure' in", src
@@ -187,8 +209,6 @@ class Cluster(object):
                     stdout=self.devnull, cwd=src)
             else:
                 raise Exception("Could not find rebar config file in %s" % src)
-        print "Running make."
-        return run("make", cwd=src, stdout=self.devnull)
 
     def _ini(self, src):
         return os.path.join(src, "rel", "overlay", "etc", "default.ini")
@@ -248,7 +268,7 @@ class _Ctx(object):
 
     def __enter__(self):
         self.cluster.start(self.settings)
-        return self.cluster.url
+        return self.cluster
 
     def __exit__(self, exc_type, exc_val, trace):
         self.cluster.stop()
