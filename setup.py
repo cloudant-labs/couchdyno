@@ -2,12 +2,12 @@ from setuptools import setup
 
 setup(
     name="dyno",
-    version="0.4.0",
+    version="0.5.0",
     url="https://github.com/cloudant/dyno",
     author="Nick Vatamaniuc",
     author_email="nvatama@us.ibm.com",
     install_requires=["CouchDB","ipython", "ConfigArgParse", "pytest"],
-    py_modules=["dyno","rep"],
+    packages = ["dyno"],
     entry_points={
         'console_scripts': [
             'dyno-info=dyno:info',
