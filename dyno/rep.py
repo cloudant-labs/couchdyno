@@ -1,52 +1,14 @@
+import sys
 import time
 import copy
 import uuid
 import couchdb
 from itertools import izip
-import configargparse
-
-
-# Specify list of files where to look for config options to load
-CFG_FILES = ['~/.dyno.cfg']
-
-
-CFG_DEFAULTS = [
-    # --configname, default, env_varname, helpstring
-    ('prefix', 'rdyno', 'REP_PREFIX',
-     'Prefix used for dbs and docs'),
-
-    ('timeout', 0, 'REP_TIMEOUT',
-     'Client socket timeout'),
-
-    ('server_url', 'http://adm:pass@localhost:15984', 'REP_SERVER_URL',
-     'Default server URL'),
-
-    ('source_url', None, 'REP_SOURCE_URL',
-     'Source URL. If not specified uses server_url'),
-
-    ('target_url', None, 'REP_TARGET_URL',
-     'Target URL. If not specified uses server_url'),
-
-    ('replicator_url', None, 'REP_REPLICATOR_URL',
-     'Replicator URL. If not specified uses server_url'),
-
-    ('worker_processes', 4, 'REP_WORKER_PROCESSES',
-     'Replication parameter'),
-
-    ('connection_timeout', 30000, 'REP_CONNECTION_TIMEOUT',
-     'Replicatoin paramater'),
-
-    ('http_connections', 20, 'REP_HTTP_CONNECTIONS',
-     'Replication parameter'),
-
-    ('create_target', False, 'REP_CREATE_TARGET',
-     'Replication parameter'),
-]
+from cfg import getcfg, cfghelp
 
 # Retry times scheduled passed to CouchDB driver to use
 # in case of connection failures
 RETRY_DELAYS = [3, 10, 20, 30, 90, 180]
-
 
 # Export a few top level functions directly so can use them at module level
 # without having to build a Rep class instance.
@@ -117,24 +79,6 @@ def tgtdb(*args, **kw):
     r = Rep(cfg=kw.pop('cfg', None))
     return r.tgtdb(*args)
 
-
-def getcfg():
-    """
-    Return configuration object from configparse module.
-    This object contains configuration gathered from multiple sources:
-     * defaults in this module
-     * config files
-     * environment variables
-     * command-line arguments
-    """
-    p = configargparse.ArgParser(default_config_files=CFG_FILES)
-    for (name, dflt, ev, hs) in CFG_DEFAULTS:
-        aname = '--' + name
-        if dflt is False:
-            p.add_argument(aname, default=dflt, action="store_true", env_var=ev, help=hs)
-        else:
-            p.add_argument(aname, default=dflt, env_var=ev, help=hs)
-    return p.parse_known_args()[0]
 
 
 def getsrv(srv=None, timeout=0):
@@ -1070,6 +1014,9 @@ def _interactive():
     print
     print "  * rep.getsrv() # get a CouchDB Server instance"
     print
+    if '-h' in sys.argv or '--help' in sys.argv:
+        print cfghelp()
+        return
     import IPython
     auto_imports = "from dyno import rep; from dyno.rep import getsrv, getdb, getrdb, Rep; import couchdb"
     IPython.start_ipython(argv=["-c", "'%s'" % auto_imports, "-i"])

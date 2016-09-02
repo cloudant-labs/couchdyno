@@ -7,15 +7,17 @@ import tempfile
 import subprocess as sp
 from ConfigParser import SafeConfigParser as Ini
 
-USER='adm'
-PASSWORD='pass'
-KILL_TIMEOUT=5
-N1_PORT=15984
+USER = 'adm'
+PASSWORD = 'pass'
+KILL_TIMEOUT = 5
+N1_PORT = 15984
+LOG_COMMANDS = True
+
 
 class Cluster(object):
 
-    # _registered and _running keep track of running
-    # cluster instances in order to do cleanup on process exit
+    #  _registered and _running keep track of running
+    #  cluster instances in order to do cleanup on process exit
     _registered = False
     _running = set()
 
@@ -23,17 +25,15 @@ class Cluster(object):
                  src,  # path to a dbnext / asf couchdb repo
                  tmpdir=None,  # optional temp dir, maybe on a ramdisk
                  settings=None,  # [(section, key, val),...] settings
-                 user=USER,
-                 password=PASSWORD,
-                 reset_data=True # Reset data before start?
-    ):
+                 reset_data=True):
         """
         Instantiate a Cluster configuration. This doesn't run the cluster just
         configures it. This involves making sure ./congure has run,
-        make has run, and some command line tools and dependencies are present.
+        and some command line tools and dependencies are present.
         """
-        src = os.path.realpath(os.path.abspath(os.path.expanduser(src)))
-        self._validate_dir(src)
+        self.orig_tmpdir = tmpdir
+        self.tmpdir = self._tmpdir(tmpdir)
+        src = self._get_source(src)
         dev_run = os.path.join(src, "dev", "run")
         assert os.path.exists(dev_run)
         assert os.path.exists(self._ini(src))
@@ -45,18 +45,21 @@ class Cluster(object):
         run("which rsync", stdout=self.devnull)
         run("which pkill", stdout=self.devnull)
         self._maybe_configure(src)
-        self.orig_tmpdir = tmpdir
-        self.tmpdir = self._tmpdir(tmpdir)
         self.src = src
         self.settings = settings
-        self.user = user
-        self.password = password
+        self.user = USER
+        self.password = PASSWORD
         self.proc = None
         self.workdir = None
         self.url = None
         self.port = N1_PORT
         self.reset_data = reset_data
         self._maybe_register_atexit()
+
+    def cleanup(self):
+        if self.orig_tmpdir:
+            return
+        run("rm -rf %s" % self.tmpdir)
 
     @property
     def alive(self):
@@ -193,8 +196,7 @@ class Cluster(object):
             print "Created temp directory: ", tmpdir
         tmpdir = os.path.realpath(os.path.abspath(os.path.expanduser(tmpdir)))
         print "Using tmpdir:", tmpdir
-        self._validate_dir(tmpdir)
-        return tmpdir
+        return self._validate_dir(tmpdir)
 
     def _maybe_configure(self, src):
         src_dir = os.path.join(src, "src")
@@ -214,11 +216,13 @@ class Cluster(object):
         return os.path.join(src, "rel", "overlay", "etc", "default.ini")
 
     def _validate_dir(self, dpath):
-        assert isinstance(dpath, basestring)
-        assert dpath != '/'
-        assert os.path.isabs(dpath)
-        assert os.path.exists(dpath)
+        assert dpath, "Cannot have an empty directory path"
+        assert isinstance(dpath, basestring), "Directory path must be a string"
+        dpath = os.path.abspath(os.path.expanduser(dpath))
+        dpath = os.path.realpath(dpath)
+        assert dpath != '/', "Cannot use top level directory, probably a mistake"
         assert os.path.isdir(dpath)
+        return dpath
 
     def _cp(self, tmpdir):
         workdir = os.path.join(tmpdir, "db")
@@ -250,10 +254,23 @@ class Cluster(object):
         with open(fp, 'w') as fh:
             ini.write(fh)
 
-
+    def _get_source(self, src):
+        if isinstance(src, basestring) and '://' not in src:
+            return self._validate_dir(src)
+        dest = os.path.join(self.tmpdir, "src_clone")
+        run("rm -rf %s" % dest)
+        cmd_prefix = "git clone --depth 1 --single-branch "
+        if isinstance(src, tuple) and len(tuple) == 2:
+            cmd = cmd_prefix + " --branch %s %s %s" % (src[1], src[0], dest)
+        else:
+            cmd = cmd_prefix + "%s %s" % (src, dest)
+        run(cmd, cwd=self.tmpdir)
+        return dest
 
 def run(cmd, **kw):
     skip_check = kw.pop('skip_check', False)
+    if LOG_COMMANDS:
+        print " * running:",cmd
     if skip_check:
         return sp.call(shlex.split(cmd), **kw)
     else:
