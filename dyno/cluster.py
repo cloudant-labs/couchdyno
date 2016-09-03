@@ -1,17 +1,28 @@
 import os
 import time
+import copy
 import shlex
 import socket
 import atexit
 import tempfile
 import subprocess as sp
 from ConfigParser import SafeConfigParser as Ini
+from cfg import getcfg
+from rep import Rep
 
 USER = 'adm'
 PASSWORD = 'pass'
 KILL_TIMEOUT = 5
 N1_PORT = 15984
 LOG_COMMANDS = True
+
+
+def get_cluster(cfg=None):
+    if cfg is None:
+        cfg = getcfg()
+    if cfg.cluster_repo is None:
+        return None
+    return Cluster(cfg=cfg)
 
 
 class Cluster(object):
@@ -21,18 +32,23 @@ class Cluster(object):
     _registered = False
     _running = set()
 
-    def __init__(self,
-                 src,  # path to a dbnext / asf couchdb repo
-                 tmpdir=None,  # optional temp dir, maybe on a ramdisk
-                 settings=None,  # [(section, key, val),...] settings
-                 reset_data=True):
+    def __init__(self, cfg=None):
         """
         Instantiate a Cluster configuration. This doesn't run the cluster just
         configures it. This involves making sure ./congure has run,
         and some command line tools and dependencies are present.
         """
-        self.orig_tmpdir = tmpdir
-        self.tmpdir = self._tmpdir(tmpdir)
+        if cfg is None:
+            cfg = getcfg()
+        if not cfg.cluster_repo:
+            raise ValueError("Cluster needs a 'cluster_repo' setting %s" % cfg)
+        repo = cfg.cluster_repo
+        if cfg.cluster_branch:
+            src = (repo, cfg.cluster_branch)
+        else:
+            src = repo
+        self.orig_tmpdir = cfg.cluster_tmpdir
+        self.tmpdir = self._tmpdir(cfg.cluster_tmpdir)
         src = self._get_source(src)
         dev_run = os.path.join(src, "dev", "run")
         assert os.path.exists(dev_run)
@@ -46,15 +62,24 @@ class Cluster(object):
         run("which pkill", stdout=self.devnull)
         self._maybe_configure(src)
         self.src = src
-        self.settings = settings
+        self.settings = _parse_settings(cfg.cluster_settings)
         self.user = USER
         self.password = PASSWORD
         self.proc = None
         self.workdir = None
         self.url = None
         self.port = N1_PORT
-        self.reset_data = reset_data
+        self.reset_data = cfg.cluster_reset_data
+        self.cfg = cfg
+        self.rep = None
         self._maybe_register_atexit()
+
+    def get_rep(self):
+        if not self.alive:
+            raise Exception("Cluster %s not running" % self)
+        cfg = copy.deepcopy(self.cfg)
+        cfg.server_url = self.url
+        return Rep(cfg = cfg)
 
     def cleanup(self):
         if self.orig_tmpdir:
@@ -158,15 +183,14 @@ class Cluster(object):
         return hash((self.src, self.port))
 
     def __str__(self):
-        return "Cluster src:%s workdir:%s port1:%s" % (self.src, self.workdir, self.port)
+        if self.alive:
+            running_str = "y"
+        else:
+            running_str = "n"
+        return "Cluster src:%s workdir:%s port:%s running?:%s" % (
+            self.src, self.workdir, self.port, running_str)
     __repr__ = __str__
 
-    @classmethod
-    def _atexit_cleanup(cls):
-        print "Running atexit cleanup hook."
-        for cluster in list(cls._running):
-            print "Stopping cluster:", cluster
-            cluster.stop()
 
     def _maybe_register_atexit(self):
         if not self.__class__._registered:
@@ -181,7 +205,7 @@ class Cluster(object):
                 s.bind(('127.0.0.1', port))
                 s.close()
                 return
-            except socket.error,e:
+            except socket.error:
                 if tries > 0:
                     time.sleep(5)
                     tries -= 1
@@ -211,6 +235,8 @@ class Cluster(object):
                     stdout=self.devnull, cwd=src)
             else:
                 raise Exception("Could not find rebar config file in %s" % src)
+        print "Trying to run make."
+        run("make", cwd=src, stdout=self.devnull)
 
     def _ini(self, src):
         return os.path.join(src, "rel", "overlay", "etc", "default.ini")
@@ -231,6 +257,7 @@ class Cluster(object):
         return workdir
 
     def _override_settings(self, workdir, extra):
+        extra = _parse_settings(extra)
         sset = set()
         if extra:
             sset.update(extra)
@@ -250,7 +277,7 @@ class Cluster(object):
         for section, key, val in settings:
             if not ini.has_section(section):
                 ini.add_section(section)
-            ini.set(section, key, val)
+            ini.set(section, key, str(val))
         with open(fp, 'w') as fh:
             ini.write(fh)
 
@@ -267,10 +294,20 @@ class Cluster(object):
         run(cmd, cwd=self.tmpdir)
         return dest
 
+    @classmethod
+    def _atexit_cleanup(cls):
+        print "Running atexit cleanup hook."
+        for cluster in list(cls._running):
+            print "Stopping cluster:", cluster
+            cluster.stop()
+            print "Cleaning up cluster:", cluster
+            cluster.cleanup()
+
+
 def run(cmd, **kw):
     skip_check = kw.pop('skip_check', False)
     if LOG_COMMANDS:
-        print " * running:",cmd
+        print "  RUN %s" % cmd
     if skip_check:
         return sp.call(shlex.split(cmd), **kw)
     else:
@@ -289,3 +326,24 @@ class _Ctx(object):
 
     def __exit__(self, exc_type, exc_val, trace):
         self.cluster.stop()
+
+
+def _parse_settings(settings):
+    if not settings:
+        return None
+    if isinstance(settings, list):
+        return [_parse_setting(s) for s in settings]
+    elif isinstance(settings, basestring):
+        settings = settings.strip()
+        return [_parse_setting(s) for s in  settings.split(',')]
+    raise ValueError("Invalid settings specification: %s" % settings)
+
+
+def _parse_setting(setting):
+    if isinstance(setting, tuple) and len(setting)==3:
+        return setting
+    elif isinstance(setting, basestring):
+        section, val_and_eq = setting.split('.', 1)
+        val, eq = val_and_eq.rsplit('=', 1)
+        return (section, val, eq)
+    raise ValueError("Invalid setting %s" % setting)

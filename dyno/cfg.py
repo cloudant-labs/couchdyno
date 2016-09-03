@@ -26,7 +26,7 @@ CFG_FILES = ['~/.dyno.cfg']
 
 CFG_DEFAULTS = [
 
-    #  --configname, default, env_varname, helpstring
+    #  --configname, default, env_varname, help_string
 
     ('prefix', 'rdyno', 'REP_PREFIX',
      'Prefix used for dbs and docs'),
@@ -58,15 +58,26 @@ CFG_DEFAULTS = [
     ('create_target', False, 'REP_CREATE_TARGET',
      'Replication parameter'),
 
-    ('local_cluster', None, 'REP_LOCAL_CLUSTER',
+    #  Settings below apply when using a locally running cluster
+    #  This cluster can be controlled from the test framework, nodes can be
+    #  stopped, its data directory can be modified, and so on.
+
+    ('cluster_repo', None, 'REP_CLUSTER_REPO',
      'File system path or Git URL of a CouchDB 2.x+ cluster'),
 
-    ('local_cluster_branch', None, 'REP_LOCAL_CLUSTER_BRANCH',
+    ('cluster_branch', None, 'REP_CLUSTER_BRANCH',
      'If local cluster if fetched from Git, can specify a branch/commit'),
 
-    ('local_cluster_tmpdir', None, 'REP_LOCAL_CLUSTER_TMPDIR',
+    ('cluster_tmpdir', None, 'REP_CLUSTER_TMPDIR',
      'If using a local cluster can provide a custom temp directory. This could'\
-     ' be a RAM disk for example, or a directory provided by the test framework')
+     ' be a RAM disk for example, or a directory provided by the test framework'),
+
+    ('cluster_reset_data', True, 'REP_CLUSTER_RESET_DATA',
+     'Reset data in the ./dev/lib/ before each cluster start?'),
+
+    ('cluster_settings', None, 'REP_CLUSTER_SETTINGS',
+     'Comma separated settings which look lik section.key=val')
+
 ]
 
 

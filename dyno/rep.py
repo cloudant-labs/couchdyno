@@ -178,6 +178,7 @@ class Rep(object):
         for k, v in sorted(cfg._get_kwargs()):
             print "  ", k, "=", v
         print
+        self.cfg = copy.deepcopy(cfg)
         rep_params = {}
         rep_params['worker_processes'] = int(cfg.worker_processes)
         rep_params['connection_timeout'] = int(cfg.connection_timeout)

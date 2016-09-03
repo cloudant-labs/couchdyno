@@ -1,2 +1,2 @@
 import pytest
-from cluster import Cluster
+from cluster import cluster
