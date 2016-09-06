@@ -1,6 +1,8 @@
 import pytest
-import rep
+import conftest
 
+
+pytestmark = pytest.mark.usefixtures("rep")
 
 TEST_ARGS = [
     (n, normal, db_per_doc)
@@ -12,31 +14,37 @@ TEST_ARGS = [
 
 @pytest.mark.parametrize("n,normal,db_per_doc", TEST_ARGS)
 def test_1_to_n_pattern(n, normal, db_per_doc):
+    rep = conftest.get_rep()
     rep.replicate_1_to_n_and_compare(n=n, cycles=2, num=100, normal=normal,
                                      db_per_doc=db_per_doc)
 
 
 @pytest.mark.parametrize("n,normal,db_per_doc", TEST_ARGS)
 def test_n_to_1_pattern(n, normal, db_per_doc):
+    rep = conftest.get_rep()
     rep.replicate_n_to_1_and_compare(n=n, cycles=2, num=100, normal=normal,
                                      db_per_doc=db_per_doc)
 
 
 @pytest.mark.parametrize("n,normal,db_per_doc", TEST_ARGS)
 def test_n_to_n_pattern(n, normal, db_per_doc):
+    rep = conftest.get_rep()
     rep.replicate_n_to_n_and_compare(n=n, cycles=2, num=100, normal=normal,
                                      db_per_doc=db_per_doc)
 
 
 @pytest.mark.parametrize("n,normal,db_per_doc", TEST_ARGS)
 def test_n_chain_pattern(n, normal, db_per_doc):
+    rep = conftest.get_rep()
     rep.replicate_n_chain_and_compare(n=n, cycles=2, num=100, normal=normal,
                                      db_per_doc=db_per_doc)
 
 
-def test_all_pattern_continuous():
+def test_all_pattern_continuous(rep):
+    rep = conftest.get_rep()
     rep.replicate_all_and_compare(n=10, cycles=2, num=10, normal=False)
 
 
-def test_all_pattern_normal():
+def test_all_pattern_normal(rep):
+    rep = conftest.get_rep()
     rep.replicate_all_and_compare(n=10, cycles=2, num=10, normal=True)
