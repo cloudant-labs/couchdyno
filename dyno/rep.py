@@ -137,7 +137,7 @@ def retry(check=bool, timeout=None, dt=10, log=True):
     return deco
 
 
-@retry(lambda x: isinstance(x, couchdb.Server), 10, 2, True)
+@retry(lambda x: isinstance(x, couchdb.Server), 30, 3, True)
 def getsrv(srv=None, timeout=0):
     """
     Get a couchdb.Server() instances. This can usually be passed to all
@@ -968,7 +968,7 @@ class Rep(object):
                 self._clean_rep_docs(db_per_doc)
                 rep_method(sr, tr, normal=True, db_per_doc=db_per_doc, rep_params=rep_params)
                 time.sleep(1)
-                self._wait_till_all_equal(sr, tr, log=True)
+                self.wait_till_all_equal(sr, tr, log=False)
                 if not db_per_doc:
                     _wait_to_complete(rdb=self.rdb, prefix=self.prefix)
         else:
@@ -979,10 +979,10 @@ class Rep(object):
                     print ">>>>>> cycle", cycle, "<<<<<<"
                 fill_callback()
                 time.sleep(1)
-                self._wait_till_all_equal(sr, tr, log=True)
+                self.wait_till_all_equal(sr, tr, log=False)
         return self
 
-    def _wait_till_all_equal(self, sr, tr, log=True):
+    def wait_till_all_equal(self, sr, tr, log=False):
         """
         Compare soure(s) and target(s) dbs for equality
         """
@@ -1130,7 +1130,7 @@ def _updocs(db, num, prefix, rand_ids, attachments, extra_data):
     scheme with a prefix.
     """
     start, end = 1, num
-    _clean_docs(prefix=prefix, db=db, startkey=prefix+'_', endkey=prefix+'_zzz')
+    _clean_docs(prefix=prefix, db=db, startkey=prefix+'-', endkey=prefix+'-zzz')
     conflicts = set()
     retry = True
     to_attach = {}
@@ -1148,14 +1148,14 @@ def _updocs(db, num, prefix, rand_ids, attachments, extra_data):
                     doc = extra_data.copy()
                     if rand_ids:
                         _id += '_' + uuid.uuid4().hex
-                        doc['_id'] = _id
+                    doc['_id'] = _id
                     yield doc
 
         for res in _bulk_updater(db, dociter):
             if res[0]:
                 doc_id = res[1]
                 doc_rev = res[2]
-                print " > updated doc", db.name, doc_id, doc_rev
+                #  print " > updated doc", db.name, doc_id, doc_rev
                 if 'conflict' in doc_rev:
                     conflicts.add(doc_id)
                     continue
@@ -1298,7 +1298,7 @@ def _clean_docs(prefix, db, startkey=None, endkey=None, srv=None):
 
     cnt = 0
     for res in _bulk_updater(db, dociter, batchsize=1000):
-        print " > deleted doc:", res[1], res[0]
+        # print " > deleted doc:", res[1], res[0]
         cnt += 1
     return cnt
 

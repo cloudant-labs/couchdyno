@@ -187,7 +187,7 @@ class Cluster(object):
             running_str = "y"
         else:
             running_str = "n"
-        return "Cluster src:%s workdir:%s port:%s running?:%s" % (
+        return "<Cluster %s workdir:%s port:%s running?:%s>" % (
             self.src, self.workdir, self.port, running_str)
     __repr__ = __str__
 
@@ -195,7 +195,6 @@ class Cluster(object):
     def _maybe_register_atexit(self):
         if not self.__class__._registered:
             atexit.register(self.__class__._atexit_cleanup)
-            print "Registered atexit cleanup hook"
             self.__class__._registered = True
 
     def _checkport(self, port, tries=10):
@@ -296,11 +295,10 @@ class Cluster(object):
 
     @classmethod
     def _atexit_cleanup(cls):
-        print "Running atexit cleanup hook."
         for cluster in list(cls._running):
-            print "Stopping cluster:", cluster
+            print "\nStopping cluster:", cluster
             cluster.stop()
-            print "Cleaning up cluster:", cluster
+            print "\nCleaning up cluster:", cluster
             cluster.cleanup()
 
 
