@@ -17,6 +17,7 @@ Example of usage:
   ...
 """
 
+import re
 import configargparse
 
 
@@ -83,6 +84,16 @@ CFG_DEFAULTS = [
 
 
 _parser = None
+_remaining_args = None
+_opts = None
+
+def parse():
+    global _parser, _opts, _rest_args
+    if not _parser:
+        _parser = _get_parser()
+        _opts, _rest_args = _parser.parse_known_args()
+    _validate_prefix(_opts.prefix)
+    return _opts, _rest_args
 
 def getcfg():
     """
@@ -93,17 +104,17 @@ def getcfg():
      * environment variables
      * command-line arguments
     """
-    global _parser
-    if _parser is None:
-        _parser = _get_parser()
-    return _parser.parse_known_args()[0]
+    return parse()[0]
+
 
 def cfghelp():
-    global _parser
     if _parser is None:
-        _parser = _get_parser()
+        parse()
     return _parser.format_help()
 
+
+def unused_args():
+    return parse()[1]
 
 #  Private functions
 
@@ -116,3 +127,8 @@ def _get_parser():
         else:
             p.add_argument(aname, default=dflt, env_var=ev, help=hs)
     return p
+
+
+def _validate_prefix(prefix):
+    assert re.match('^[a-z0-9]{3,50}', prefix, re.IGNORECASE), \
+        "Prefix must be between 3 and 50 chars and only have letters and numbers"

@@ -1,5 +1,5 @@
-import pytest
 
+# rep is a pytest fixture from conftest.py
 
 def test_basic_continuous(rep):
     rep.replicate_1_to_n_and_compare(1)

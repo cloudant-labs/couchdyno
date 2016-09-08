@@ -129,7 +129,7 @@ class Cluster(object):
         cmd = "dev/run --admin=%s:%s" % (self.user, self.password)
         print "Starting:", cmd
         self.proc = sp.Popen(cmd, cwd=workdir, stdout=self.devnull, shell=True)
-        time.sleep(3)
+        time.sleep(4)
         if not self.alive:
             sout, _ = self.proc.communicate()
             self.proc = None

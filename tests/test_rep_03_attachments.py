@@ -16,6 +16,6 @@ TEST_ARGS = [
 @pytest.mark.parametrize("normal,attachments,num", TEST_ARGS)
 def test_attachments(normal, attachments, num):
     rep = conftest.get_rep()
-    rep.replicate_n_to_n_and_compare(n=2, cycles=2, num=num, normal=normal,
+    rep.replicate_n_to_n_and_compare(n=2, num=num, normal=normal,
                                      attachments=attachments)
 
