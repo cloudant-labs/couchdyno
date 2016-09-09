@@ -38,6 +38,14 @@ class Cluster(object):
         configures it. This involves making sure ./congure has run,
         and some command line tools and dependencies are present.
         """
+        self.proc = None
+        self.workdir = None
+        self.url = None
+        self.src = None
+        self.rep = None
+        self.user = USER
+        self.password = PASSWORD
+        self.port = N1_PORT
         if cfg is None:
             cfg = getcfg()
         if not cfg.cluster_repo:
@@ -63,15 +71,8 @@ class Cluster(object):
         self._maybe_configure(src)
         self.src = src
         self.settings = _parse_settings(cfg.cluster_settings)
-        self.user = USER
-        self.password = PASSWORD
-        self.proc = None
-        self.workdir = None
-        self.url = None
-        self.port = N1_PORT
         self.reset_data = cfg.cluster_reset_data
         self.cfg = cfg
-        self.rep = None
         self._maybe_register_atexit()
 
     def get_rep(self):
@@ -199,8 +200,8 @@ class Cluster(object):
 
     def _checkport(self, port, tries=10):
         while tries > 0:
-            s = socket.socket()
             try:
+                s = socket.socket()
                 s.bind(('127.0.0.1', port))
                 s.close()
                 return
@@ -246,7 +247,7 @@ class Cluster(object):
         dpath = os.path.abspath(os.path.expanduser(dpath))
         dpath = os.path.realpath(dpath)
         assert dpath != '/', "Cannot use top level directory, probably a mistake"
-        assert os.path.isdir(dpath)
+        assert os.path.isdir(dpath), "Directory doesn't exist"
         return dpath
 
     def _cp(self, tmpdir):

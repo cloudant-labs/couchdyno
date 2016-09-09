@@ -184,23 +184,23 @@ def getdb(db, srv=None, create=True, reset=False):
     if reset:
         if dbname in srv:
             del srv[dbname]
-            print " > deleted db:", dbname
+            # print " > deleted db:", dbname
         try:
             r = srv.create(dbname)
-            print " > created db:", dbname
+            # print " > created db:", dbname
             return r
         except couchdb.http.ResourceNotFound:
             print "got resource not found on create", dbname, "retrying..."
             time.sleep(1)
             r = srv.create(dbname)
-            print " > created db:", dbname
+            # print " > created db:", dbname
             return r
     if dbname in srv:
         return srv[dbname]
     else:
         if create:
             r = srv.create(dbname)
-            print " > created db:", dbname
+            # print " > created db:", dbname
             return r
         raise Exception("Db %s does not exist" % dbname)
 
@@ -373,9 +373,9 @@ class Rep(object):
         configured prefix
         """
         _clean_docs(prefix=self.prefix, db=self.rdb)
-        _clean_dbs(preifx=self.prefix+'-', srv=self.rdbsrv)
-        _clean_dbs(prefix=self.prefix+'_', srv=self.srcsrv)
-        _clean_dbs(prefix=self.prefix+'_', srv=self.tgtsrv)
+        _clean_dbs(prefix=self.prefix+'-', srv=self.repsrv)
+        _clean_dbs(prefix=self.prefix+'-', srv=self.srcsrv)
+        _clean_dbs(prefix=self.prefix+'-', srv=self.tgtsrv)
 
     def create_dbs(self, source_range, target_range, reset=False):
         """
@@ -956,7 +956,7 @@ class Rep(object):
         additional replication and filter params.
         """
         filter_ddoc, rep_params = self._filter_ddoc_and_rep_params(filter_params, rep_params)
-        self._clean_rep_docs(db_per_doc)
+        self._clean_rep_docs()
         self.create_dbs(sr, tr, reset=reset)
         self.sync_filter(filter_ddoc, sr)
         if normal:
@@ -965,7 +965,7 @@ class Rep(object):
                     print
                     print ">>>>>> cycle", cycle, "<<<<<<"
                 fill_callback()
-                self._clean_rep_docs(db_per_doc)
+                self._clean_rep_docs()
                 rep_method(sr, tr, normal=True, db_per_doc=db_per_doc, rep_params=rep_params)
                 time.sleep(1)
                 self.wait_till_all_equal(sr, tr, log=False)
@@ -1043,14 +1043,12 @@ class Rep(object):
         doc.update(_id=did, source=src_dbname, target=tgt_dbname)
         return doc
 
-    def _clean_rep_docs(self, db_per_doc):
+    def _clean_rep_docs(self):
+        #print " > cleaning existing docs from rep db:", self.rdb.name, "doc prefix:", self.prefix
+        _clean_docs(db=self.rdb, srv=self.repsrv, prefix=self.prefix)
         prefix = self.prefix + '-repdb-'
-        if db_per_doc:
-            print " > cleaning up replicator dbs prefix:", prefix
-            _clean_dbs(prefix=prefix, srv=self.repsrv)
-        else:
-            print " > cleaning existing docs from rep db:", self.rdb.name, "doc prefix:", self.prefix
-            _clean_docs(db=self.rdb, srv=self.repsrv, prefix=self.prefix)
+        #print " > cleaning up replicator dbs prefix:", prefix
+        _clean_dbs(prefix=prefix, srv=self.repsrv)
 
 
 # Utility functions
@@ -1095,7 +1093,7 @@ def _clean_dbs(prefix, srv):
     for dbname in srv:
         if dbname.startswith(prefix):
             del srv[dbname]
-            print "   > deleted db:", dbname
+            # print "   > deleted db:", dbname
             cnt += 1
     return cnt
 
@@ -1147,7 +1145,7 @@ def _updocs(db, num, prefix, rand_ids, attachments, extra_data):
                     _id = prefix + '-%07d' % i
                     doc = extra_data.copy()
                     if rand_ids:
-                        _id += '_' + uuid.uuid4().hex
+                        _id += '-' + uuid.uuid4().hex
                     doc['_id'] = _id
                     yield doc
 
@@ -1276,8 +1274,8 @@ def _rdb_updater(repsrv, rdb, prefix, dociter, db_per_doc):
 
 
 def _rdb_and_doc(rdbsrv, prefix, n, doc):
-    dbname = prefix + '-repdb-%07d' % n + '_replicator'
-    db = getdb(dbname, srv=rdbsrv)
+    dbname = prefix + '-repdb-%07d' % n + '/_replicator'
+    db = getdb(dbname, srv=rdbsrv, create=True)
     db[doc['_id']] = doc
     return doc
 
@@ -1291,14 +1289,12 @@ def _clean_docs(prefix, db, startkey=None, endkey=None, srv=None):
     else:
         all_docs_params = None
     doc_revs = _yield_revs(db, prefix=prefix, all_docs_params=all_docs_params)
-
     def dociter():
         for _id, _rev in doc_revs:
             yield dict(_id=_id, _rev=_rev, _deleted=True)
-
     cnt = 0
     for res in _bulk_updater(db, dociter, batchsize=1000):
-        # print " > deleted doc:", res[1], res[0]
+        #  print " > deleted doc:", res[1], res[0]
         cnt += 1
     return cnt
 
@@ -1331,10 +1327,10 @@ def _create_range_dbs(lo, hi, prefix, reset=False, srv=None):
         return
     missing_list = list(missing_dbs)
     missing_list.sort()
-    print "Creating", len(missing_list), "databases"
+    # print "Creating", len(missing_list), "databases"
     for dbname in missing_list:
         srv.create(dbname)
-        print "  > created", dbname
+        # print "  > created db", dbname
 
 
 def _remote_url(srv, dbname):
