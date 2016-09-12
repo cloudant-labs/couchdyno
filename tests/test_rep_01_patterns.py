@@ -12,8 +12,6 @@ TEST_ARGS = [
 ]
 
 
-
-
 @pytest.mark.parametrize("n,normal,db_per_doc", TEST_ARGS)
 def test_n_to_n_pattern(n, normal, db_per_doc):
     rep = conftest.get_rep()

@@ -121,7 +121,7 @@ def get_running_cluster():
 def rep(session_cfg, running_local_cluster_with_tight_scheduler):
     running_cluster = running_local_cluster_with_tight_scheduler
     global _rep, _running_cluster
-    if running_local_cluster:
+    if running_cluster:
         _running_cluster = running_cluster
         _rep = running_cluster.get_rep()
         yield _rep

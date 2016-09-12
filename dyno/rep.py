@@ -184,23 +184,23 @@ def getdb(db, srv=None, create=True, reset=False):
     if reset:
         if dbname in srv:
             del srv[dbname]
-            # print " > deleted db:", dbname
+            print "\n > deleted db:", dbname
         try:
             r = srv.create(dbname)
-            # print " > created db:", dbname
+            print "\n > created db:", dbname
             return r
         except couchdb.http.ResourceNotFound:
             print "got resource not found on create", dbname, "retrying..."
             time.sleep(1)
             r = srv.create(dbname)
-            # print " > created db:", dbname
+            print "\n > created db:", dbname
             return r
     if dbname in srv:
         return srv[dbname]
     else:
         if create:
             r = srv.create(dbname)
-            # print " > created db:", dbname
+            print "\n > created db:", dbname
             return r
         raise Exception("Db %s does not exist" % dbname)
 
@@ -1044,10 +1044,10 @@ class Rep(object):
         return doc
 
     def _clean_rep_docs(self):
-        #print " > cleaning existing docs from rep db:", self.rdb.name, "doc prefix:", self.prefix
+        print "\n > cleaning existing docs from rep db:", self.rdb.name, "doc prefix:", self.prefix
         _clean_docs(db=self.rdb, srv=self.repsrv, prefix=self.prefix)
         prefix = self.prefix + '-repdb-'
-        #print " > cleaning up replicator dbs prefix:", prefix
+        print "\n > cleaning up replicator dbs prefix:", prefix
         _clean_dbs(prefix=prefix, srv=self.repsrv)
 
 
@@ -1153,7 +1153,7 @@ def _updocs(db, num, prefix, rand_ids, attachments, extra_data):
             if res[0]:
                 doc_id = res[1]
                 doc_rev = res[2]
-                #  print " > updated doc", db.name, doc_id, doc_rev
+                # print " > updated doc", db.name, doc_id, doc_rev
                 if 'conflict' in doc_rev:
                     conflicts.add(doc_id)
                     continue
@@ -1195,7 +1195,7 @@ def _put_attachments(db, doc_id, doc_rev, attachments):
             val_str = "x" * val
         else:
             val_str = str(val)
-        print "   > put attachment:", db.name, doc, name_str, len(val_str)
+        #  print "   > put attachment:", db.name, doc, name_str, len(val_str)
         db.put_attachment(doc, val_str, filename=name_str)
 
 
@@ -1327,7 +1327,7 @@ def _create_range_dbs(lo, hi, prefix, reset=False, srv=None):
         return
     missing_list = list(missing_dbs)
     missing_list.sort()
-    # print "Creating", len(missing_list), "databases"
+    print "\nCreating", len(missing_list), "databases"
     for dbname in missing_list:
         srv.create(dbname)
         # print "  > created db", dbname

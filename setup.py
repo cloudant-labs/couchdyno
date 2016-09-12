@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name="dyno",
-    version="0.5.1",
+    version="0.6.0",
     url="https://github.com/cloudant/dyno",
     author="Nick Vatamaniuc",
     author_email="nvatama@us.ibm.com",
