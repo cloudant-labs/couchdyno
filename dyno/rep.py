@@ -113,25 +113,27 @@ def retry(check=bool, timeout=None, dt=10, log=True):
     def deco(f):
         def retry(*args, **kw):
             t0 = time.time()
-            tf = t0 + timeout if timeout > 0 else None
+            _timeout = kw.pop('retry_timeout', timeout)
+            _dt = kw.pop('retry_dt', dt)
+            tf = t0 + _timeout if _timeout > 0 else None
             t = 1
             while True:
                 if tf is not None and time.time() > tf:
-                    raise RetryTimeoutExceeded("Timeout : %s" % timeout)
+                    raise RetryTimeoutExceeded("Timeout : %s" % _timeout)
                 try:
                     r = f(*args, **kw)
                 except Exception, e:
                     fn = _fname(f)
                     print " > function", fn, "threw exception", e, "retrying"
                     t += 1
-                    time.sleep(dt * 2**t)
+                    time.sleep(_dt * 2**t)
                     continue
                 t = 1
                 if (callable(check) and check(r)) or check == r:
                     return r
                 if log:
                     print " > retrying function", _fname(f)
-                time.sleep(dt)
+                time.sleep(_dt)
         return retry
 
     return deco
@@ -247,6 +249,8 @@ class Rep(object):
         self.rep_params = rep_params
         self.src_params = {}
         self.prefix = str(cfg.prefix)
+        self.cycle_timeout = int(cfg.cycle_timeout)
+        self.cycle_dt = 15
         timeout = int(cfg.timeout)
         srv = getsrv(cfg.server_url, timeout=timeout)
         if not cfg.target_url:
@@ -970,7 +974,8 @@ class Rep(object):
                 time.sleep(1)
                 self.wait_till_all_equal(sr, tr, log=False)
                 if not db_per_doc:
-                    _wait_to_complete(rdb=self.rdb, prefix=self.prefix)
+                    _wait_to_complete(rdb=self.rdb, prefix=self.prefix,
+                                      retry_timeout=self.cycle_timeout, retry_dt=self.cycle_dt)
         else:
             rep_method(sr, tr, normal=False, db_per_doc=db_per_doc, rep_params=rep_params)
             for cycle in xrange(1, cycles+1):
@@ -998,33 +1003,37 @@ class Rep(object):
                     continue
                 if log:
                     print " > comparing source", prev_s, s
-                _wait_to_propagate(self.srcdb(prev_s), self.srcdb(s), self.prefix)
+                self._wait_propagate(self.srcdb(prev_s), self.srcdb(s))
                 prev_s = s
         elif len(xrs) == 1 and len(xrt) == 1:
             print " > checking if target and source equal", xrs[0], xrt[0]
-            _wait_to_propagate(self.srcdb(xrs[0]), self.tgtdb(xrt[0]), self.prefix)
+            self._wait_propagate(self.srcdb(xrs[0]), self.tgtdb(xrt[0]))
         elif len(xrs) == 1 and len(xrt) > 1:
             s = xrs[0]
             for t in xrt:
                 if log:
                     print " > comparing target ", t
-                _wait_to_propagate(self.srcdb(s), self.tgtdb(t), self.prefix)
+                self._wait_propagate(self.srcdb(s), self.tgtdb(t))
         elif len(xrs) > 1 and len(xrt) == 1:
             t = xrt[0]
             for s in xrs:
                 if log:
                     print " > comparing source", s
-                _wait_to_propagate(self.srcdb(s), self.tgtdb(t), self.prefix)
+                self._wait_propagate(self.srcdb(s), self.tgtdb(t))
         elif len(xrt) == len(xrs):
             for (s, t) in izip(xrs, xrt):
                 if log:
                     print " > comparing source-target pair", s, t
-                _wait_to_propagate(self.srcdb(s), self.tgtdb(t), self.prefix)
+                self._wait_propagate(self.srcdb(s), self.tgtdb(t))
         else:
             raise ValueError("Cannot compare arbitrary source and target dbs %s %s" % (sr, tr))
         if log:
             dt = time.time() - t0
             print " > changes propagated in at least %.1f sec" % dt
+
+    def _wait_propagate(self, sr, tr):
+        _wait_to_propagate(sr, tr, self.prefix, retry_timeout=self.cycle_timeout,
+                           retry_dt=self.cycle_dt)
 
     def _create_range_dbs(self, srv, numrange, reset=None):
         lo, hi = _db_range_validate(numrange)
