@@ -22,7 +22,7 @@ import configargparse
 
 
 # Specify list of files where to look for config options to load
-CFG_FILES = ['~/.dyno.cfg']
+CFG_FILES = ['~/.dyno.cfg', './dyno.cfg']
 
 
 CFG_DEFAULTS = [
@@ -34,6 +34,9 @@ CFG_DEFAULTS = [
 
     ('timeout', 0, 'REP_TIMEOUT',
      'Client socket timeout'),
+
+    ('cycle_timeout', 1800, 'REP_CYCLE_TIMEOUT',
+     'Timed used for a whole cycles. How long to wait for changes to propagate'),
 
     ('server_url', 'http://adm:pass@localhost:15984', 'REP_SERVER_URL',
      'Default server URL'),
