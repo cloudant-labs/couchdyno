@@ -4,7 +4,6 @@ import conftest
 
 # running_local_cluster is a pytest fixture from conftest.py
 
-
 @conftest.skip_if_not_local
 def test_migration_on_node_failure(running_local_cluster):
     """
@@ -31,4 +30,3 @@ def test_migration_on_node_failure(running_local_cluster):
         if cycle == 2:
             print "\n - kill node 1"
             cluster.stop_node(2)
-

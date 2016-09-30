@@ -13,6 +13,7 @@ RETRY_DELAYS = [3, 10, 20, 30, 90]
 # Export a few top level functions directly so can use them at module level
 # without having to build a Rep class instance.
 
+
 def replicate_1_to_n_and_compare(*args, **kw):
     """(See Rep.replicate_1_to_n_and_compare)"""
     r = Rep(cfg=kw.pop('cfg', None))
@@ -53,31 +54,38 @@ def clean(*args, **kw):
 def srcdocs(*args, **kw):
     """(See doc of Rep.srcdocs)"""
     r = Rep(cfg=kw.pop('cfg', None))
-    return r.srcdocs(*args)
+    return r.srcdocs(*args, **kw)
 
 
 def tgtdocs(*args, **kw):
     """(See doc of Rep.tgtdocs)"""
     r = Rep(cfg=kw.pop('cfg', None))
-    return r.tgtdocs(*args)
+    return r.tgtdocs(*args, **kw)
 
 
 def repdocs(*args, **kw):
     """(See doc of Rep.repdocs)"""
     r = Rep(cfg=kw.pop('cfg', None))
-    return r.repdocs(*args)
+    return r.repdocs(*args, **kw)
 
 
 def srcdb(*args, **kw):
     """(See doc of Rep.srcdb)"""
     r = Rep(cfg=kw.pop('cfg', None))
-    return r.srcdb(*args)
+    return r.srcdb(*args, **kw)
 
 
 def tgtdb(*args, **kw):
-    """(See tgtdb of Rep.tgtdb)"""
+    """(See doc of Rep.tgtdb)"""
     r = Rep(cfg=kw.pop('cfg', None))
-    return r.tgtdb(*args)
+    return r.tgtdb(*args, **kw)
+
+
+def wait_till_all_equal(*args, **kw):
+    """(See doc Rep.wait_till_all_equal)"""
+    r = Rep(cfg=kw.pop('cfg', None))
+    return r.wait_till_all_equal(*args, **kw)
+
 
 class RetryTimeoutExceeded(Exception):
     """Exceed retry timeout"""
@@ -126,7 +134,7 @@ def retry(check=bool, timeout=None, dt=10, log=True):
                     fn = _fname(f)
                     print " > function", fn, "threw exception", e, "retrying"
                     t += 1
-                    time.sleep(_dt * 2**t)
+                    time.sleep(min(2**t, 300))
                     continue
                 t = 1
                 if (callable(check) and check(r)) or check == r:
@@ -139,7 +147,7 @@ def retry(check=bool, timeout=None, dt=10, log=True):
     return deco
 
 
-@retry(lambda x: isinstance(x, couchdb.Server), 30, 3, True)
+@retry(lambda x: isinstance(x, couchdb.Server), 30, 10, True)
 def getsrv(srv=None, timeout=0):
     """
     Get a couchdb.Server() instances. This can usually be passed to all
@@ -168,7 +176,6 @@ def getsrv(srv=None, timeout=0):
         return sobj
 
 
-
 def getdb(db, srv=None, create=True, reset=False):
     """
     Get a couchdb.Database() instance. This can be used to manipulate
@@ -186,24 +193,17 @@ def getdb(db, srv=None, create=True, reset=False):
     if reset:
         if dbname in srv:
             del srv[dbname]
-            print "\n > deleted db:", dbname
         try:
-            r = srv.create(dbname)
-            print "\n > created db:", dbname
-            return r
+            return srv.create(dbname)
         except couchdb.http.ResourceNotFound:
             print "got resource not found on create", dbname, "retrying..."
-            time.sleep(1)
-            r = srv.create(dbname)
-            print "\n > created db:", dbname
-            return r
+            time.sleep(5)
+            return srv.create(dbname)
     if dbname in srv:
         return srv[dbname]
     else:
         if create:
-            r = srv.create(dbname)
-            print "\n > created db:", dbname
-            return r
+            return srv.create(dbname)
         raise Exception("Db %s does not exist" % dbname)
 
 
@@ -228,8 +228,8 @@ class Rep(object):
     instance, such as prefix to use (so can use mulitple concurrenlty on same
     server, replication params like timeouts).
 
-    A Rep class instance is configured from a configparse.ArgParser.parse_args()
-    result. If that is not passed in a default one will be used.
+    A Rep class instance is configured from an ArgParser.parse_args() result
+    If that is not passed in a default one will be instantiated and used.
     """
 
     def __init__(self, cfg=None):
@@ -250,7 +250,7 @@ class Rep(object):
         self.src_params = {}
         self.prefix = str(cfg.prefix)
         self.cycle_timeout = int(cfg.cycle_timeout)
-        self.cycle_dt = 15
+        self.cycle_dt = 10
         timeout = int(cfg.timeout)
         srv = getsrv(cfg.server_url, timeout=timeout)
         if not cfg.target_url:
@@ -324,9 +324,10 @@ class Rep(object):
             res += [dict(db[did])]
         return res
 
-    def fill(self, i=1, num=1, rand_ids=False, src_params=None, attachments=None):
+    def fill(self, i=1, num=1, rand_ids=False, src_params=None,
+             attachments=None):
         """
-        Fill a source db (specified as a numerical index) with num (=1) documents.
+        Fill a source db (specified as an index) with num documents.
 
         :param i: Db index
         :param num: How many documents to write
@@ -358,9 +359,9 @@ class Rep(object):
 
     def updoc(self, db, doc):
         """
-        Update a single doc in a database. This is used mainly to sync design documents.
-        doc can be any dictionary. If doc exists then its '_rev' is read and used.
-        If doc is None then nothing happens.
+        Update a single doc in a database. This is used mainly to sync design
+        documents. doc can be any dictionary. If doc exists then its '_rev' is
+        read and used. If doc is None then nothing happens.
         """
         if doc is None:
             return
@@ -373,8 +374,8 @@ class Rep(object):
 
     def clean(self):
         """
-        Remove replication documents from default replication db and clean all dbs with
-        configured prefix
+        Remove replication documents from default replication db and clean all
+        dbs with configured prefix
         """
         _clean_docs(prefix=self.prefix, db=self.rdb)
         _clean_dbs(prefix=self.prefix+'-', srv=self.repsrv)
@@ -383,25 +384,28 @@ class Rep(object):
 
     def create_dbs(self, source_range, target_range, reset=False):
         """
-        Ensure db in source_range and target_range exist. Both source and target
-        range are specifed as (low, high) numeric interval. However if
-        `create_target` replication parameter is specified, target dbs are not created.
-        If reset is True then databases are deleted, then re-created.
+        Ensure db in source_range and target_range exist. Both source and
+        target range are specifed as (low, high) numeric interval. However if
+        `create_target` replication parameter is specified, target dbs are not
+        created. If reset is True then databases are deleted, then re-created.
         """
-        self._create_range_dbs(srv=self.srcsrv, numrange=source_range, reset=reset)
+        self._create_range_dbs(srv=self.srcsrv, numrange=source_range,
+                               reset=reset)
         if target_range and not self.rep_params.get('create_target'):
-            self._create_range_dbs(srv=self.tgtsrv, numrange=target_range, reset=reset)
+            self._create_range_dbs(srv=self.tgtsrv, numrange=target_range,
+                                   reset=reset)
 
     def sync_filter(self, filter_ddoc, sr):
         """
-        Given a filter design document and a range of source databases, make sure
-        filter document is written to all those databases.
+        Given a filter design document and a range of source databases, make
+        sure filter document is written to all those databases.
         """
         lo, hi = _db_range_validate(sr)
         for i in xrange(lo, hi+1):
             self.updoc(self.srcdb(i), filter_ddoc)
 
-    def replicate_n_to_n(self, sr, tr, normal=False, db_per_doc=False, rep_params=None):
+    def replicate_n_to_n(self, sr, tr, normal=False, db_per_doc=False,
+                         rep_params=None):
         """
         Generate "n-to-n" pattern replications.
 
@@ -411,12 +415,14 @@ class Rep(object):
         This method assumes databases have already been created.
 
         :param sr: Source db range specified as (low, high) interval.
-        :param tr: Target db range specified as (low, high) interval. Source and target
-          db interval sizes must be equal.
-        :param normal: if `True` create a normal replication instead of continuous
-        :param db_per_doc: if `True` create a separate replication db per each
-          replication document.
-        :param rep_params: additional replication parameters (usually filters)
+        :param tr: Target db range specified as (low, high) interval.
+          Source and target db interval sizes must be equal.
+        :param normal: if `True` create a normal replication instead of
+           continuous
+        :param db_per_doc: if `True` create a separate replication db
+           per each replication document.
+        :param rep_params: additional replication parameters (usually
+           filters)
         """
         if rep_params is None:
             rep_params = {}
@@ -429,9 +435,11 @@ class Rep(object):
             for s, t in ipairs:
                 yield self._repdoc(s, t, params=params)
 
-        return _rdb_updater(self.repsrv, self.rdb, self.prefix, dociter, db_per_doc)
+        return _rdb_updater(self.repsrv, self.rdb, self.prefix, dociter,
+                            db_per_doc)
 
-    def replicate_1_to_n(self, sr, tr, normal=False, db_per_doc=False, rep_params=None):
+    def replicate_1_to_n(self, sr, tr, normal=False, db_per_doc=False,
+                         rep_params=None):
         """
         Generate "1-to-n" pattern replications.
 
@@ -441,9 +449,10 @@ class Rep(object):
         This method assumes databases have already been created.
 
         :param sr: Source db range specified as (low, high) interval.
-        :param tr: Target db range specified as (low, high) interval. Source and target
-          db interval sizes must be equal.
-        :param normal: if `True` create a normal replication instead of continuous
+        :param tr: Target db range specified as (low, high) interval. Source
+          and target db interval sizes must be equal.
+        :param normal: if `True` create a normal replication instead of
+          continuous
         :param db_per_doc: if `True` create a separate replication db per each
           replication document.
         :param rep_params: additional replication parameters (usually filters)
@@ -462,9 +471,11 @@ class Rep(object):
             for t in xrt:
                 yield self._repdoc(s, t, params=params)
 
-        return _rdb_updater(self.repsrv, self.rdb, self.prefix, dociter, db_per_doc)
+        return _rdb_updater(self.repsrv, self.rdb, self.prefix, dociter,
+                            db_per_doc)
 
-    def replicate_n_to_1(self, sr, tr, normal=False, db_per_doc=False, rep_params=None):
+    def replicate_n_to_1(self, sr, tr, normal=False, db_per_doc=False,
+                         rep_params=None):
         """
         Generate "n-to-1" pattern replications.
 
@@ -474,9 +485,10 @@ class Rep(object):
         This method assumes databases have already been created.
 
         :param sr: Source db range specified as (low, high) interval.
-        :param tr: Target db range specified as (low, high) interval. Source and target
-          db interval sizes must be equal.
-        :param normal: if `True` create a normal replication instead of continuous
+        :param tr: Target db range specified as (low, high) interval.
+          Source and target db interval sizes must be equal.
+        :param normal: if `True` create a normal replication instead of
+          continuous
         :param db_per_doc: if `True` create a separate replication db per each
           replication document.
         :param rep_params: additional replication parameters (usually filters)
@@ -495,9 +507,11 @@ class Rep(object):
             for s in xrs:
                 yield self._repdoc(s, t, params=params)
 
-        return _rdb_updater(self.repsrv, self.rdb, self.prefix, dociter, db_per_doc)
+        return _rdb_updater(self.repsrv, self.rdb, self.prefix, dociter,
+                            db_per_doc)
 
-    def replicate_n_chain(self, sr, tr, normal=False, db_per_doc=False, rep_params=None):
+    def replicate_n_chain(self, sr, tr, normal=False, db_per_doc=False,
+                          rep_params=None):
         """
         Generate a chain of n replications.
 
@@ -507,9 +521,10 @@ class Rep(object):
         This method assumes databases have already been create.
 
         :param sr: Source db range specified as (low, high) interval.
-        :param tr: Target db range specified as (low, high) interval. Source and target
-          db interval sizes must be equal.
-        :param normal: if `True` create a normal replication instead of continuous
+        :param tr: Target db range specified as (low, high) interval.
+          Source and target db interval sizes must be equal.
+        :param normal: if `True` create a normal replication instead of
+          continuous
         :param db_per_doc: if `True` create a separate replication db per each
           replication document.
         :param rep_params: additional replication parameters (usually filters)
@@ -533,14 +548,16 @@ class Rep(object):
                     yield self._repdoc(prev_s, s, params=params)
                     prev_s = s
 
-        return _rdb_updater(self.repsrv, self.rdb, self.prefix, dociter, db_per_doc)
+        return _rdb_updater(self.repsrv, self.rdb, self.prefix, dociter,
+                            db_per_doc)
 
-    def replicate_all(self, sr, tr, normal=False, db_per_doc=False, rep_params=None):
+    def replicate_all(self, sr, tr, normal=False, db_per_doc=False,
+                      rep_params=None):
         """
         Generate a complete replication graph of n nodes. This method is used
         to generate a maximum number of replication based on a smaller number
-        of databases. It generates a n^2 replication for n databases. For example,
-        can create 10k replications from just 100 databases.
+        of databases. It generates a n^2 replication for n databases. For
+        example, can create 10k replications from just 100 databases.
 
         Example: if n is 3 then generates:
           1 -> 1, 1 -> 2, 1 -> 3,
@@ -550,9 +567,10 @@ class Rep(object):
         This method assumes databases have already been created.
 
         :param sr: Source db range specified as (low, high) interval.
-        :param tr: Target db range specified as (low, high) interval. Source and target
-          db interval sizes must be equal.
-        :param normal: if `True` create a normal replication instead of continuous
+        :param tr: Target db range specified as (low, high) interval.
+          Source and target db interval sizes must be equal.
+        :param normal: if `True` create a normal replication instead of
+          continuous
         :param db_per_doc: if `True` create a separate replication db per each
           replication document.
         :param rep_params: additional replication parameters (usually filters)
@@ -571,15 +589,18 @@ class Rep(object):
                 for s2 in xrs:
                     yield self._repdoc(s1, s2, params=params)
 
-        return _rdb_updater(self.repsrv, self.rdb, self.prefix, dociter, db_per_doc)
+        return _rdb_updater(self.repsrv, self.rdb, self.prefix, dociter,
+                            db_per_doc)
 
     def replicate_1_to_n_and_compare(self, n=1, cycles=1, num=1, normal=False,
-                                     db_per_doc=False, rep_params=None, src_params=None,
-                                     attachments=None, reset=False, filter_js=None,
-                                     filter_mango=None, filter_doc_ids=None, filter_view=None,
+                                     db_per_doc=False, rep_params=None,
+                                     src_params=None, attachments=None,
+                                     reset=False, filter_js=None,
+                                     filter_mango=None, filter_doc_ids=None,
+                                     filter_view=None,
                                      filter_query_params=None):
         """
-        Create source and/or target databases. Fill source with data (num=1 docs).
+        Create source and/or target databases. Fill source with data.
 
         Generate 1-to-n replications (see replicate_1_to_n doc for details).
 
@@ -591,8 +612,10 @@ class Rep(object):
         :param cycles: How many times to repeat.
         :param num: How many documents to write to source.
         :param normal: If True use normal instead of continuous replications.
-           (Normal replications delete and re-create replication docs each cycle).
-        :param db_per_doc: If True, then create a replicator db per each document.
+          Normal replications delete and re-create replication docs each
+          cycle.
+        :param db_per_doc: If True, then create a replicator db per each
+          document.
         :param rep_params: Additional parameters to write to replication docs.
         :param src_params: Additional parameters to write to source docs.
         :param attachments: Add optional attachment to _each_ doc in source db.
@@ -610,33 +633,39 @@ class Rep(object):
         :param filter_doc_ids: True|[str] specify a list of doc_ids to use as
           `doc_ids` filter. If True then filter is [self.prefix+'_0000001']
         :param filter_view: Specify a view filter map function, used for _view
-          filter. If true then `function(doc) { emit(doc._id, null); };` is used.
+          filter. If true then `function(doc) { emit(doc._id, null); };` is
+          used.
         :param filter_query_params: Specify optional params for user JS filter.
         """
         sr, tr = 1, (2, n+1)
         repmeth = self.replicate_1_to_n
-        filter_params = dict(js=filter_js, mango=filter_mango, doc_ids=filter_doc_ids,
-                             view=filter_view, query_params=filter_query_params)
+        filter_params = dict(js=filter_js, mango=filter_mango,
+                             doc_ids=filter_doc_ids, view=filter_view,
+                             query_params=filter_query_params)
 
         def fillcb():
-            self.fill(1, num=num, src_params=src_params, attachments=attachments)
+            self.fill(1, num=num, src_params=src_params,
+                      attachments=attachments)
 
-        return self._setup_and_compare(normal, sr, tr, cycles, num, reset, repmeth,
-                                       fillcb, db_per_doc, rep_params, filter_params)
+        return self._setup_and_compare(normal, sr, tr, cycles, num, reset,
+                                       repmeth, fillcb, db_per_doc, rep_params,
+                                       filter_params)
 
     def replicate_n_to_1_and_compare(self, n=1, cycles=1, num=1, normal=False,
-                                     db_per_doc=False, rep_params=None, src_params=None,
-                                     attachments=None, reset=False, filter_js=None,
-                                     filter_mango=None, filter_doc_ids=None, filter_view=None,
+                                     db_per_doc=False, rep_params=None,
+                                     src_params=None, attachments=None,
+                                     reset=False, filter_js=None,
+                                     filter_mango=None, filter_doc_ids=None,
+                                     filter_view=None,
                                      filter_query_params=None):
         """
-        Create source and/or target databases. Fill source with data (num=1 docs).
+        Create source and/or target databases. Fill source with data.
 
         Generate n-to-1 replications (see replicate_n_to_1 doc for details).
 
         Wait until changes from source dbs propagates to target. Unlike other
-        replications it fills sources dbs with random ids (so they don't collide on
-        the target).
+        replications it fills sources dbs with random ids (so they don't
+        collide on the target).
 
         Repeat `cycles` (=1) number of times.
 
@@ -644,8 +673,10 @@ class Rep(object):
         :param cycles: How many times to repeat.
         :param num: How many documents to write to source.
         :param normal: If True use normal instead of continuous replications.
-           (Normal replications delete and re-create replication docs each cycle).
-        :param db_per_doc: If True, then create a replicator db per each document.
+           Normal replications delete and re-create replication docs each
+           cycle.
+        :param db_per_doc: If True, then create a replicator db per each
+           document.
         :param rep_params: Additional parameters to write to replication docs.
         :param src_params: Additional parameters to write to source docs.
         :param attachments: Add optional attachment to _each_ doc in source db.
@@ -663,29 +694,35 @@ class Rep(object):
         :param filter_doc_ids: True|[str] specify a list of doc_ids to use as
           `doc_ids` filter. If True then filter is [self.prefix+'_0000001']
         :param filter_view: Specify a view filter map function, used for _view
-          filter. If true then `function(doc) { emit(doc._id, null); };` is used.
+          filter. If true then `function(doc) { emit(doc._id, null); };`
+          is used.
         :param filter_query_params: Specify optional params for user JS filter.
         """
         sr, tr = (2, n+1), 1
         repmeth = self.replicate_n_to_1
-        filter_params = dict(js=filter_js, mango=filter_mango, doc_ids=filter_doc_ids,
-                             view=filter_view, query_params=filter_query_params)
+        filter_params = dict(js=filter_js, mango=filter_mango,
+                             doc_ids=filter_doc_ids,
+                             view=filter_view,
+                             query_params=filter_query_params)
 
         def fillcb():
             for src in _xrange(sr):
                 self.fill(src, num=num, rand_ids=True,  src_params=src_params,
                           attachments=attachments)
 
-        return self._setup_and_compare(normal, sr, tr, cycles, num, reset, repmeth,
-                                       fillcb, db_per_doc, rep_params, filter_params)
+        return self._setup_and_compare(normal, sr, tr, cycles, num, reset,
+                                       repmeth, fillcb, db_per_doc, rep_params,
+                                       filter_params)
 
     def replicate_n_to_n_and_compare(self, n=1, cycles=1, num=1, normal=False,
-                                     db_per_doc=False, rep_params=None, src_params=None,
-                                     attachments=None, reset=False, filter_js=None,
-                                     filter_mango=None, filter_doc_ids=None, filter_view=None,
+                                     db_per_doc=False, rep_params=None,
+                                     src_params=None, attachments=None,
+                                     reset=False, filter_js=None,
+                                     filter_mango=None, filter_doc_ids=None,
+                                     filter_view=None,
                                      filter_query_params=None):
         """
-        Create source and/or target databases. Fill source with data (num=1 docs).
+        Create source and/or target databases. Fill source with data.
 
         Generate n-to-n replications (see replicate_n_to_n doc for details).
         It creates n database pairs (so 2*n total databases).
@@ -698,8 +735,10 @@ class Rep(object):
         :param cycles: How many times to repeat.
         :param num: How many documents to write to source.
         :param normal: If True use normal instead of continuous replications.
-          (Normal replications delete and re-create replication docs each cycle).
-        :param db_per_doc: If True, then create a replicator db per each document.
+          Normal replications delete and re-create replication docs each
+          cycle.
+        :param db_per_doc: If True, then create a replicator db per each
+          document.
         :param rep_params: Additional parameters to write to replication docs.
         :param src_params: Additional parameters to write to source docs.
         :param attachments: Add optional attachment to _each_ doc in source db.
@@ -717,30 +756,36 @@ class Rep(object):
         :param filter_doc_ids: True|[str] specify a list of doc_ids to use as
           `doc_ids` filter. If True then filter is [self.prefix+'_0000001']
         :param filter_view: Specify a view filter map function, used for _view
-          filter. If true then `function(doc) { emit(doc._id, null); };` is used.
+          filter. If true then `function(doc) { emit(doc._id, null); };` is
+          used.
         :param filter_query_params: Specify optional params for user JS filter.
         """
         sr, tr = (1, n), (n+1, 2*n)
         repmeth = self.replicate_n_to_n
-        filter_params = dict(js=filter_js, mango=filter_mango, doc_ids=filter_doc_ids,
-                             view=filter_view, query_params=filter_query_params)
+        filter_params = dict(js=filter_js, mango=filter_mango,
+                             doc_ids=filter_doc_ids, view=filter_view,
+                             query_params=filter_query_params)
 
         def fillcb():
             for src in _xrange(sr):
-                self.fill(src, num=num, src_params=src_params, attachments=attachments)
+                self.fill(src, num=num, src_params=src_params,
+                          attachments=attachments)
 
-        return self._setup_and_compare(normal, sr, tr, cycles, num, reset, repmeth,
-                                       fillcb, db_per_doc, rep_params, filter_params)
+        return self._setup_and_compare(normal, sr, tr, cycles, num, reset,
+                                       repmeth, fillcb, db_per_doc, rep_params,
+                                       filter_params)
 
     def replicate_n_chain_and_compare(self, n=2, cycles=1, num=1, normal=False,
-                                      db_per_doc=False, rep_params=None, src_params=None,
-                                      attachments=None, reset=False, filter_js=None,
-                                      filter_mango=None, filter_doc_ids=None, filter_view=None,
+                                      db_per_doc=False, rep_params=None,
+                                      src_params=None, attachments=None,
+                                      reset=False, filter_js=None,
+                                      filter_mango=None, filter_doc_ids=None,
+                                      filter_view=None,
                                       filter_query_params=None):
         """
-        Create source and/or target databases. Fill source with data (num=1 docs).
+        Create source and/or target databases. Fill source with data.
 
-        Generate chain of n replication (see replicate_n_chain doc for details).
+        Generate chain of n replication.
 
         Wait until changes from source db propagates to all targets.
 
@@ -750,8 +795,10 @@ class Rep(object):
         :param cycles: How many times to repeat.
         :param num: How many documents to write to source.
         :param normal: If True use normal instead of continuous replications.
-           (Normal replications delete and re-create replication docs each cycle).
-        :param db_per_doc: If True, then create a replicator db per each document.
+          Normal replications delete and re-create replication docs each
+          cycle.
+        :param db_per_doc: If True, then create a replicator db per each
+          document.
         :param rep_params: Additional parameters to write to replication docs.
         :param src_params: Additional parameters to write to source docs.
         :param attachments: Add optional attachment to _each_ doc in source db.
@@ -769,32 +816,37 @@ class Rep(object):
         :param filter_doc_ids: True|[str] specify a list of doc_ids to use as
           `doc_ids` filter. If True then filter is [self.prefix+'_0000001']
         :param filter_view: Specify a view filter map function, used for _view
-          filter. If true then `function(doc) { emit(doc._id, null); };` is used.
+          filter. If true then `function(doc) { emit(doc._id, null); };` is
+          used.
         :param filter_query_params: Specify optional params for user JS filter.
         """
         if n < 2:
             raise ValueError("A chain requires a minimim of 2 nodes")
         sr, tr = (1, n), 0  # target not used here, only sources
         repmeth = self.replicate_n_chain
-        filter_params = dict(js=filter_js, mango=filter_mango, doc_ids=filter_doc_ids,
-                             view=filter_view, query_params=filter_query_params)
+        filter_params = dict(js=filter_js, mango=filter_mango,
+                             doc_ids=filter_doc_ids,
+                             view=filter_view,
+                             query_params=filter_query_params)
 
         def fillcb():
-            self.fill(1, num=num, src_params=src_params, attachments=attachments)
+            self.fill(1, num=num, src_params=src_params,
+                      attachments=attachments)
 
-        return self._setup_and_compare(normal, sr, tr, cycles, num, reset, repmeth,
-                                       fillcb, db_per_doc, rep_params, filter_params)
+        return self._setup_and_compare(normal, sr, tr, cycles, num, reset,
+                                       repmeth, fillcb, db_per_doc, rep_params,
+                                       filter_params)
 
     def replicate_all_and_compare(self, n=1, cycles=1, num=1, normal=False,
-                                  db_per_doc=False, rep_params=None, src_params=None,
-                                  attachments=None, reset=False, filter_js=None,
-                                  filter_mango=None, filter_doc_ids=None, filter_view=None,
-                                  filter_query_params=None):
+                                  db_per_doc=False, rep_params=None,
+                                  src_params=None, attachments=None,
+                                  reset=False, filter_js=None,
+                                  filter_mango=None, filter_doc_ids=None,
+                                  filter_view=None, filter_query_params=None):
         """
-        Create source and/or target databases. Fill source with data (num=1 docs).
-
-        Generate  all n to all n replications (see replicate_all doc for details).
-        This generates n*2 replications from only n databases.
+        Create source and/or target databases. Fill source with data.
+        Generate  all n to all n replications. This generates n^2 replications
+        from only n databases.
 
         Wait until changes from source db propagates to targets.
 
@@ -804,8 +856,10 @@ class Rep(object):
         :param cycles: How many times to repeat.
         :param num: How many documents to write to source.
         :param normal: If True use normal instead of continuous replications.
-          (Normal replications delete and re-create replication docs each cycle).
-        :param db_per_doc: If True, then create a replicator db per each document.
+          Normal replications delete and re-create replication docs each
+          cycle.
+        :param db_per_doc: If True, then create a replicator db per each
+          document.
         :param rep_params: Additional parameters to write to replication docs.
         :param src_params: Additional parameters to write to source docs.
         :param attachments: Add optional attachment to _each_ doc in source db.
@@ -823,19 +877,24 @@ class Rep(object):
         :param filter_doc_ids: True|[str] specify a list of doc_ids to use as
           `doc_ids` filter. If True then filter is [self.prefix+'_0000001']
         :param filter_view: Specify a view filter map function, used for _view
-          filter. If true then `function(doc) { emit(doc._id, null); };` is used.
+          filter. If true then `function(doc) { emit(doc._id, null); };` is
+          used.
         :param filter_query_params: Specify optional params for user JS filter.
         """
         sr, tr = (1, n), 0  # target not used here, only sources
         repmeth = self.replicate_all
-        filter_params = dict(js=filter_js, mango=filter_mango, doc_ids=filter_doc_ids,
-                             view=filter_view, query_params=filter_query_params)
+        filter_params = dict(js=filter_js, mango=filter_mango,
+                             doc_ids=filter_doc_ids,
+                             view=filter_view,
+                             query_params=filter_query_params)
 
         def fillcb():
-            self.fill(1, num=num, src_params=src_params, attachments=attachments)
+            self.fill(1, num=num, src_params=src_params,
+                      attachments=attachments)
 
-        return self._setup_and_compare(normal, sr, tr, cycles, num, reset, repmeth,
-                                       fillcb, db_per_doc, rep_params, filter_params)
+        return self._setup_and_compare(normal, sr, tr, cycles, num, reset,
+                                       repmeth, fillcb, db_per_doc, rep_params,
+                                       filter_params)
 
     # Private methods
 
@@ -848,7 +907,8 @@ class Rep(object):
         params = filter_params.copy()
         query_params = params.pop('query_params', None)
         assert set(params.keys()) == set(['js', 'mango', 'view', 'doc_ids'])
-        specified = dict([(k, v) for (k, v) in params.items() if v is not None])
+        specified = dict([(k, v) for (k, v) in params.items()
+                          if v is not None])
         if not specified:
             return (None, rep_params)
         if len(specified) > 1:
@@ -856,7 +916,8 @@ class Rep(object):
         fname, fbody = specified.popitem()
         ddoc = None
         if fname is 'js':
-            ddoc, rep_params_up = self._filter_js(fbody, query_params=query_params)
+            ddoc, rep_params_up = self._filter_js(fbody,
+                                                  query_params=query_params)
         if fname is 'mango':
             ddoc, rep_params_up = self._filter_mango(fbody)
         if fname is 'doc_ids':
@@ -937,12 +998,13 @@ class Rep(object):
         }
         return (ddoc, rep_params)
 
-    def _setup_and_compare(self, normal, sr, tr, cycles, num, reset, rep_method,
-                           fill_callback, db_per_doc, rep_params, filter_params):
+    def _setup_and_compare(self, normal, sr, tr, cycles, num, reset,
+                           rep_method, fill_callback, db_per_doc, rep_params,
+                           filter_params):
         """
         Common utility method for all replicate_*_and_compare functions.
 
-        Sets up databases. Parses filters and puts filter design docs (if any) to
+        Sets up databases. Parses filters and puts filter design docs to
         source dbs.
 
         If replications are `normal` then each cycle:
@@ -954,12 +1016,14 @@ class Rep(object):
           - fill sources with data
           - wait till changes propagate to target
 
-        Parameters can configure, source and target db ranges as tuples of (low, high),
-        number of docs to write to soruce, replicaton callback method to use. Source
-        fill callback method to use. Whether to use a single replicator db per each doc,
-        additional replication and filter params.
+        Parameters can configure, source and target db ranges as tuples of
+        (low, high), number of docs to write to soruce, replicaton callback
+        method to use. Source fill callback method to use. Whether to use a
+        single replicator db per each doc, additional replication and filter
+        params.
         """
-        filter_ddoc, rep_params = self._filter_ddoc_and_rep_params(filter_params, rep_params)
+        filter_ddoc, rep_params = self._filter_ddoc_and_rep_params(
+            filter_params, rep_params)
         self._clean_rep_docs()
         self.create_dbs(sr, tr, reset=reset)
         self.sync_filter(filter_ddoc, sr)
@@ -970,27 +1034,29 @@ class Rep(object):
                     print ">>>>>> cycle", cycle, "<<<<<<"
                 fill_callback()
                 self._clean_rep_docs()
-                rep_method(sr, tr, normal=True, db_per_doc=db_per_doc, rep_params=rep_params)
-                time.sleep(1)
+                rep_method(sr, tr, normal=True, db_per_doc=db_per_doc,
+                           rep_params=rep_params)
                 self.wait_till_all_equal(sr, tr, log=False)
                 if not db_per_doc:
                     _wait_to_complete(rdb=self.rdb, prefix=self.prefix,
-                                      retry_timeout=self.cycle_timeout, retry_dt=self.cycle_dt)
+                                      retry_timeout=self.cycle_timeout,
+                                      retry_dt=self.cycle_dt)
         else:
-            rep_method(sr, tr, normal=False, db_per_doc=db_per_doc, rep_params=rep_params)
+            rep_method(sr, tr, normal=False, db_per_doc=db_per_doc,
+                       rep_params=rep_params)
             for cycle in xrange(1, cycles+1):
                 if cycles > 1:
                     print
                     print ">>>>>> cycle", cycle, "<<<<<<"
                 fill_callback()
-                time.sleep(1)
                 self.wait_till_all_equal(sr, tr, log=False)
         return self
 
-    def wait_till_all_equal(self, sr, tr, log=False):
+    def wait_till_all_equal(self, sr, tr, log=True):
         """
         Compare soure(s) and target(s) dbs for equality
         """
+        print "> comparing dbs", sr, tr
         t0 = time.time()
         xrs, xrt = _xrange(sr), _xrange(tr)
         if len(xrt) == 0:
@@ -1026,13 +1092,15 @@ class Rep(object):
                     print " > comparing source-target pair", s, t
                 self._wait_propagate(self.srcdb(s), self.tgtdb(t))
         else:
-            raise ValueError("Cannot compare arbitrary source and target dbs %s %s" % (sr, tr))
+            raise ValueError("Cannot compare source and target dbs %s %s" % (
+                sr, tr))
         if log:
             dt = time.time() - t0
             print " > changes propagated in at least %.1f sec" % dt
 
     def _wait_propagate(self, sr, tr):
-        _wait_to_propagate(sr, tr, self.prefix, retry_timeout=self.cycle_timeout,
+        _wait_to_propagate(sr, tr, self.prefix,
+                           retry_timeout=self.cycle_timeout,
                            retry_dt=self.cycle_dt)
 
     def _create_range_dbs(self, srv, numrange, reset=None):
@@ -1053,7 +1121,8 @@ class Rep(object):
         return doc
 
     def _clean_rep_docs(self):
-        print "\n > cleaning existing docs from rep db:", self.rdb.name, "doc prefix:", self.prefix
+        print "\n > cleaning existing docs from rep db:", self.rdb.name,\
+            "doc prefix:", self.prefix
         _clean_docs(db=self.rdb, srv=self.repsrv, prefix=self.prefix)
         prefix = self.prefix + '-repdb-'
         print "\n > cleaning up replicator dbs prefix:", prefix
@@ -1079,9 +1148,9 @@ def _interactive():
     print " Examples:"
     print
     print "  * rep.rep.replicate_1_to_n_and_compare(2, cycles=2)"
-    print "    # replicate 1 source to 2 targets (1->2, 1->3). Fill source with data"
-    print "    # (add a document) and then wait for all targets to have same data."
-    print "    # Do it 2 times (cycles=2)."
+    print "    # replicate 1 source to 2 targets (1->2, 1->3). Fill source"
+    print "    # (add a document) and then wait for all targets to have same"
+    print "    # data. Do it 2 times (cycles=2)."
     print
     print "  * rep.getsrv() # get a CouchDB Server instance"
     print
@@ -1089,11 +1158,10 @@ def _interactive():
         print cfghelp()
         return
     import IPython
-    auto_imports = "from dyno import rep; from dyno.rep import getsrv, getdb, getrdb, Rep; import couchdb"
+    auto_imports = "from dyno import rep;"\
+                   " from dyno.rep import getsrv, getdb, getrdb, Rep;"\
+                   " import couchdb"
     IPython.start_ipython(argv=["-c", "'%s'" % auto_imports, "-i"])
-
-
-
 
 
 def _clean_dbs(prefix, srv):
@@ -1102,7 +1170,6 @@ def _clean_dbs(prefix, srv):
     for dbname in srv:
         if dbname.startswith(prefix):
             del srv[dbname]
-            # print "   > deleted db:", dbname
             cnt += 1
     return cnt
 
@@ -1137,7 +1204,8 @@ def _updocs(db, num, prefix, rand_ids, attachments, extra_data):
     scheme with a prefix.
     """
     start, end = 1, num
-    _clean_docs(prefix=prefix, db=db, startkey=prefix+'-', endkey=prefix+'-zzz')
+    _clean_docs(prefix=prefix, db=db, startkey=prefix + '-',
+                endkey=prefix + '-zzz')
     conflicts = set()
     retry = True
     to_attach = {}
@@ -1171,7 +1239,7 @@ def _updocs(db, num, prefix, rand_ids, attachments, extra_data):
             else:
                 print " > ERROR:", db.name, res[1], res[2]
         if conflicts:
-            print " > WARNING: found", len(conflicts), " conflicts, retrying to add them"
+            print " > WARNING: found", len(conflicts), " conflicts, retrying"
         else:
             retry = False
 
@@ -1298,12 +1366,13 @@ def _clean_docs(prefix, db, startkey=None, endkey=None, srv=None):
     else:
         all_docs_params = None
     doc_revs = _yield_revs(db, prefix=prefix, all_docs_params=all_docs_params)
+
     def dociter():
         for _id, _rev in doc_revs:
             yield dict(_id=_id, _rev=_rev, _deleted=True)
+
     cnt = 0
     for res in _bulk_updater(db, dociter, batchsize=1000):
-        #  print " > deleted doc:", res[1], res[0]
         cnt += 1
     return cnt
 
@@ -1328,7 +1397,6 @@ def _create_range_dbs(lo, hi, prefix, reset=False, srv=None):
         found_dbs.sort()
         for dbname in found_dbs:
             del srv[dbname]
-            print "  > deleted db:", dbname
         missing_dbs = want_dbs
     else:
         missing_dbs = want_dbs - existing_dbs
@@ -1362,7 +1430,7 @@ def _get_incomplete(rdb, prefix):
     return res
 
 
-@retry(lambda x: x == {}, 3600, 10, False)
+@retry(lambda x: x == {}, 3600, 20, False)
 def _wait_to_complete(rdb, prefix):
     return _get_incomplete(rdb=rdb, prefix=prefix)
 
@@ -1381,8 +1449,10 @@ def _contains(db1, db2, prefix):
     """
     # first compare ids only, if those show differences, no reason to bother
     # with getting all the docs
-    s1 = set((_id[0] for _id in _yield_revs(db1, prefix=prefix, batchsize=500)))
-    s2 = set((_id[0] for _id in _yield_revs(db2, prefix=prefix, batchsize=500)))
+    s1 = set((_id[0] for _id in _yield_revs(db1, prefix=prefix,
+                                            batchsize=500)))
+    s2 = set((_id[0] for _id in _yield_revs(db2, prefix=prefix,
+                                            batchsize=500)))
     sdiff12 = s1 - s2
     if sdiff12:
         return False
@@ -1401,7 +1471,7 @@ def _contains(db1, db2, prefix):
     return True
 
 
-@retry(True, 3600, 10, False)
+@retry(True, 3600, 20, False)
 def _wait_to_propagate(db1, db2, prefix):
     return _contains(db1=db1, db2=db2, prefix=prefix)
 

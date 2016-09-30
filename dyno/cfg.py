@@ -35,8 +35,8 @@ CFG_DEFAULTS = [
     ('timeout', 0, 'REP_TIMEOUT',
      'Client socket timeout'),
 
-    ('cycle_timeout', 1800, 'REP_CYCLE_TIMEOUT',
-     'Timed used for a whole cycles. How long to wait for changes to propagate'),
+    ('cycle_timeout', 8*3600, 'REP_CYCLE_TIMEOUT',
+     'How long to wait for changes to propagate'),
 
     ('server_url', 'http://adm:pass@localhost:15984', 'REP_SERVER_URL',
      'Default server URL'),
@@ -73,8 +73,9 @@ CFG_DEFAULTS = [
      'If local cluster if fetched from Git, can specify a branch/commit'),
 
     ('cluster_tmpdir', None, 'REP_CLUSTER_TMPDIR',
-     'If using a local cluster can provide a custom temp directory. This could'\
-     ' be a RAM disk for example, or a directory provided by the test framework'),
+     'If using a local cluster can provide a custom temp directory. This '
+     ' could be a RAM disk for example, or a directory provided by the test '
+     ' framework'),
 
     ('cluster_reset_data', True, 'REP_CLUSTER_RESET_DATA',
      'Reset data in the ./dev/lib/ before each cluster start?'),
@@ -85,10 +86,10 @@ CFG_DEFAULTS = [
 ]
 
 
-
 _parser = None
 _remaining_args = None
 _opts = None
+
 
 def parse():
     global _parser, _opts, _rest_args
@@ -97,6 +98,7 @@ def parse():
         _opts, _rest_args = _parser.parse_known_args()
     _validate_prefix(_opts.prefix)
     return _opts, _rest_args
+
 
 def getcfg():
     """
@@ -119,6 +121,7 @@ def cfghelp():
 def unused_args():
     return parse()[1]
 
+
 #  Private functions
 
 def _get_parser():
@@ -126,7 +129,8 @@ def _get_parser():
     for (name, dflt, ev, hs) in CFG_DEFAULTS:
         aname = '--' + name
         if dflt is False:
-            p.add_argument(aname, default=dflt, action="store_true", env_var=ev, help=hs)
+            p.add_argument(aname, default=dflt, action="store_true",
+                           env_var=ev, help=hs)
         else:
             p.add_argument(aname, default=dflt, env_var=ev, help=hs)
     return p
@@ -134,4 +138,4 @@ def _get_parser():
 
 def _validate_prefix(prefix):
     assert re.match('^[a-z0-9]{3,50}', prefix, re.IGNORECASE), \
-        "Prefix must be between 3 and 50 chars and only have letters and numbers"
+        "Prefix must be between 3 and 50 chars and have letters and numbers"

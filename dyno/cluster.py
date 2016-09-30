@@ -10,6 +10,7 @@ from ConfigParser import SafeConfigParser as Ini
 from cfg import getcfg
 from rep import Rep
 
+
 USER = 'adm'
 PASSWORD = 'pass'
 KILL_TIMEOUT = 5
@@ -80,7 +81,7 @@ class Cluster(object):
             raise Exception("Cluster %s not running" % self)
         cfg = copy.deepcopy(self.cfg)
         cfg.server_url = self.url
-        return Rep(cfg = cfg)
+        return Rep(cfg=cfg)
 
     def cleanup(self):
         if self.orig_tmpdir:
@@ -135,11 +136,12 @@ class Cluster(object):
             sout, _ = self.proc.communicate()
             self.proc = None
             self.url = None
-            #run("rm -rf %s" % workdir)
+            # run("rm -rf %s" % workdir)
             raise Exception("Could not launch cluster: '%s'" % sout)
         self._running.add(self)
         self.workdir = workdir
-        self.url = 'http://%s:%s@localhost:%s' % (self.user, self.password, self.port)
+        self.url = 'http://%s:%s@localhost:%s' % (
+            self.user, self.password, self.port)
         return self
 
     def stop(self):
@@ -167,11 +169,11 @@ class Cluster(object):
         self.url = None
         return self
 
-    def stop_node(self,node_id):
+    def stop_node(self, node_id):
         if not isinstance(node_id, int):
             raise ValueError("Node ID should be %s an integer" % node_id)
-        kill_cmd = "pkill -f 'beam.smp.*node%s@127.0.0.1 -setcookie monster'" % node_id
-        return run(kill_cmd, stdout=self.devnull, skip_check=True)
+        cmd = "pkill -f 'beam.smp.*node%s@127.0.0.1 -setcookie monster'"
+        return run(cmd % node_id, stdout=self.devnull, skip_check=True)
 
     # Private methods
 
@@ -192,7 +194,6 @@ class Cluster(object):
             self.src, self.workdir, self.port, running_str)
     __repr__ = __str__
 
-
     def _maybe_register_atexit(self):
         if not self.__class__._registered:
             atexit.register(self.__class__._atexit_cleanup)
@@ -212,7 +213,7 @@ class Cluster(object):
                     print "Port 15984 is in use, waiting. Tries left:", tries
                     continue
                 else:
-                    raise Exception("Looks like port %s is already in use " % port)
+                    raise Exception("Port %s is already in use " % port)
 
     def _tmpdir(self, tmpdir):
         if tmpdir is None:
@@ -246,7 +247,7 @@ class Cluster(object):
         assert isinstance(dpath, basestring), "Directory path must be a string"
         dpath = os.path.abspath(os.path.expanduser(dpath))
         dpath = os.path.realpath(dpath)
-        assert dpath != '/', "Cannot use top level directory, probably a mistake"
+        assert dpath != '/', "Cannot use root, probably a mistake"
         assert os.path.isdir(dpath), "Directory doesn't exist"
         return dpath
 
@@ -313,7 +314,6 @@ def run(cmd, **kw):
         return sp.check_call(shlex.split(cmd), **kw)
 
 
-
 class _Ctx(object):
     def __init__(self, cluster, settings=None):
         self.cluster = cluster
@@ -334,12 +334,12 @@ def _parse_settings(settings):
         return [_parse_setting(s) for s in settings]
     elif isinstance(settings, basestring):
         settings = settings.strip()
-        return [_parse_setting(s) for s in  settings.split(',')]
+        return [_parse_setting(s) for s in settings.split(',')]
     raise ValueError("Invalid settings specification: %s" % settings)
 
 
 def _parse_setting(setting):
-    if isinstance(setting, tuple) and len(setting)==3:
+    if isinstance(setting, tuple) and len(setting) == 3:
         return setting
     elif isinstance(setting, basestring):
         section, val_and_eq = setting.split('.', 1)

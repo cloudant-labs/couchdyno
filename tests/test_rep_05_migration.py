@@ -13,7 +13,8 @@ def test_migration_error(rep):
         '_replication_state_reason': 'snek',
         'other_random': 'data'
     }
-    rep.replicate_1_to_n_and_compare(1, num=1, normal=False, rep_params=rep_params)
+    rep.replicate_1_to_n_and_compare(1, num=1, normal=False,
+                                     rep_params=rep_params)
     time.sleep(10)
     rdoc = rdb['rdyno-0000001-0000002']
     assert '_replication_state' not in rdoc
@@ -29,7 +30,8 @@ def test_migration_triggered(rep):
         '_replication_state_time': 'sometime',
         'other_random': 'data'
     }
-    rep.replicate_1_to_n_and_compare(1, num=1, normal=False, rep_params=rep_params)
+    rep.replicate_1_to_n_and_compare(1, num=1, normal=False,
+                                     rep_params=rep_params)
     time.sleep(10)
     rdoc = rdb['rdyno-0000001-0000002']
     assert '_replication_state' not in rdoc
@@ -47,7 +49,8 @@ def test_migration_downgrade_failed(rep):
         '_replication_state': 'failed',
         '_replication_state_reason': 'newscheduler',
     }
-    rep.replicate_1_to_n_and_compare(1, num=1, normal=False, rep_params=rep_params)
+    rep.replicate_1_to_n_and_compare(1, num=1, normal=False,
+                                     rep_params=rep_params)
     time.sleep(10)
     rdoc = rdb['rdyno-0000001-0000002']
     assert '_replication_state' in rdoc

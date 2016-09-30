@@ -25,7 +25,6 @@ TIGHT_SCHEDULER = [
 ]
 
 
-
 def pytest_cmdline_preparse(args):
     args[:] = unused_args()
 
@@ -35,7 +34,9 @@ def is_local():
     return bool(cfg.cluster_repo)
 
 
-skip_if_not_local = pytest.mark.skipif(not is_local(), reason="Not a local cluster")
+skip_if_not_local = pytest.mark.skipif(not is_local(),
+                                       reason="Not a local cluster")
+
 
 def has_replicator_scheduler(rep):
     srv = rep.repsrv
@@ -106,10 +107,12 @@ def running_local_cluster_with_tight_scheduler(local_cluster):
 _rep = None
 _running_cluster = None
 
+
 def get_rep():
     if _rep is None:
-        raise Exception("No current replication configuration object is defined")
+        raise Exception("No current replication config object is defined")
     return _rep
+
 
 def get_running_cluster():
     if _running_cluster is None:

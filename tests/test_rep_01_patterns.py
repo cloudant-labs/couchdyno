@@ -6,8 +6,8 @@ pytestmark = pytest.mark.usefixtures("rep")
 
 TEST_ARGS = [
     (n, normal, db_per_doc)
-    for n in [1] #, 10]
-    for normal in [False] #, True]
+    for n in [1, 10]
+    for normal in [False, True]
     for db_per_doc in [False, True]
 ]
 
@@ -39,4 +39,3 @@ def test_n_chain_pattern(rep):
 def test_all_pattern_continuous(rep):
     rep = conftest.get_rep()
     rep.replicate_all_and_compare(n=10, num=10, normal=False)
-
