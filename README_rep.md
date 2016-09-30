@@ -49,7 +49,7 @@ $ make
 $ ./dev/run --admin=adm:pass
 ```
 
-In top level dyno repo run `./build.sh` on first use. It sets up a Python
+In top level couchdyno repo run `./build.sh` on first use. It sets up a Python
 venv and fetches dependencies.
 
 Then lauch with `./venv/bin/rep`:
@@ -98,7 +98,7 @@ configuration:
    connection_timeout = 30000
    create_target = False
    http_connections = 20
-   prefix = rdyno
+   prefix = cdyno
    replicator_url = None
    server_url = http://adm:pass@localhost:15984
    source_url = None

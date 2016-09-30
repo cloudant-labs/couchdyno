@@ -4,11 +4,11 @@ import copy
 import uuid
 import couchdb
 from itertools import izip
-from cfg import getcfg, cfghelp
+from cfg import getcfg, cfghelp, logger
 
 # Retry times scheduled passed to CouchDB driver to use
 # in case of connection failures
-RETRY_DELAYS = [3, 10, 20, 30, 90]
+RETRY_DELAYS = [1, 3, 10, 20, 30, 90]
 
 # Export a few top level functions directly so can use them at module level
 # without having to build a Rep class instance.
@@ -123,6 +123,7 @@ def retry(check=bool, timeout=None, dt=10, log=True):
             t0 = time.time()
             _timeout = kw.pop('retry_timeout', timeout)
             _dt = kw.pop('retry_dt', dt)
+            _dt = max(_dt, 3)
             tf = t0 + _timeout if _timeout > 0 else None
             t = 1
             while True:
@@ -132,16 +133,16 @@ def retry(check=bool, timeout=None, dt=10, log=True):
                     r = f(*args, **kw)
                 except Exception, e:
                     fn = _fname(f)
-                    print " > function", fn, "threw exception", e, "retrying"
+                    logger("function", fn, "threw exception", e, "retrying")
                     t += 1
                     time.sleep(min(2**t, 300))
                     continue
                 t = 1
+                time.sleep(3)
                 if (callable(check) and check(r)) or check == r:
                     return r
-                if log:
-                    print " > retrying function", _fname(f)
-                time.sleep(_dt)
+                logger(log, "retrying function", _fname(f))
+                time.sleep(_dt - 3)
         return retry
 
     return deco
@@ -157,7 +158,7 @@ def getsrv(srv=None, timeout=0):
       In [0]: srv = rep.getsrv()
       In [1]: list(srv)
       Out[2]:
-        [u'_replicator', u'rdyno_0000001', u'rdyno_0000002', u'rdyno_0000003']
+        [u'_replicator', u'cdyno_0000001', u'cdyno_0000002', u'cdyno_0000003']
     """
     if isinstance(srv, couchdb.Server):
         return srv
@@ -182,9 +183,9 @@ def getdb(db, srv=None, create=True, reset=False):
     documents in a database.
 
     Example:
-      In [0]: d1 = rep.getdb('rdyno_0000001')
+      In [0]: d1 = rep.getdb('cdyno_0000001')
       In [1]: list(d1)
-      Out[2]: [u'_design/rdyno_viewdoc', u'rdyno_0000001']
+      Out[2]: [u'_design/cdyno_viewdoc', u'cdyno_0000001']
     """
     if isinstance(db, couchdb.Database):
         return db
@@ -196,7 +197,7 @@ def getdb(db, srv=None, create=True, reset=False):
         try:
             return srv.create(dbname)
         except couchdb.http.ResourceNotFound:
-            print "got resource not found on create", dbname, "retrying..."
+            logger("got resource not found on create", dbname, "retrying...")
             time.sleep(5)
             return srv.create(dbname)
     if dbname in srv:
@@ -215,7 +216,7 @@ def getrdb(db=None, srv=None, create=True, reset=False):
     Example:
        In [0]: rdb = rep.getrdb()
        In [1]: list(rdb)
-       Out[2]: [u'_design/_replicator', u'rdyno_0000001_0000002']
+       Out[2]: [u'_design/_replicator', u'cdyno_0000001_0000002']
     """
     if db is None:
         db = "_replicator"
@@ -235,11 +236,10 @@ class Rep(object):
     def __init__(self, cfg=None):
         if cfg is None:
             cfg = getcfg()
-        print
-        print "configuration:"
+        logger("\nconfiguration:")
         for k, v in sorted(cfg._get_kwargs()):
-            print "  ", k, "=", v
-        print
+            logger("  - ", k, "=", v)
+        logger("")
         self.cfg = copy.deepcopy(cfg)
         rep_params = {}
         rep_params['worker_processes'] = int(cfg.worker_processes)
@@ -267,6 +267,13 @@ class Rep(object):
             self.repsrv = getsrv(cfg.replicator_url, timeout=timeout)
         self.rdb = getrdb(srv=self.repsrv)
 
+    def __repr__(self):
+        return "<Rep %s source = %s target = %s>" % (self.repsrv.resource.url,
+                                                     self.srcsrv.resource.url,
+                                                     self.tgtsrv.resource.url)
+
+    __str__ = __repr__
+
     def getcfg(self):
         return self.cfg
 
@@ -275,7 +282,7 @@ class Rep(object):
         Return source db object with a given numerical index.
         Example:
         >>> rep.srcdb(1)
-        >>> <Database 'rdyno_0000001'>
+        >>> <Database 'cdyno_0000001'>
         """
         return getdb(_dbname(i, self.prefix), srv=self.srcsrv)
 
@@ -284,7 +291,7 @@ class Rep(object):
         Return target db object with a given numerical index.
         Example:
         >>> rep.tgtdb(2)
-        >>> <Database 'rdyno_0000002'>
+        >>> <Database 'cdyno_0000002'>
         """
         return getdb(_dbname(i, self.prefix), srv=self.tgtsrv)
 
@@ -1030,8 +1037,7 @@ class Rep(object):
         if normal:
             for cycle in xrange(1, cycles+1):
                 if cycles > 1:
-                    print
-                    print ">>>>>> cycle", cycle, "<<<<<<"
+                    logger("  ----- cycle", cycle, "------")
                 fill_callback()
                 self._clean_rep_docs()
                 rep_method(sr, tr, normal=True, db_per_doc=db_per_doc,
@@ -1046,17 +1052,15 @@ class Rep(object):
                        rep_params=rep_params)
             for cycle in xrange(1, cycles+1):
                 if cycles > 1:
-                    print
-                    print ">>>>>> cycle", cycle, "<<<<<<"
+                    logger("   ------- cycle", cycle, "-------")
                 fill_callback()
                 self.wait_till_all_equal(sr, tr, log=False)
-        return self
 
     def wait_till_all_equal(self, sr, tr, log=True):
         """
         Compare soure(s) and target(s) dbs for equality
         """
-        print "> comparing dbs", sr, tr
+        logger("comparing dbs", sr, tr)
         t0 = time.time()
         xrs, xrt = _xrange(sr), _xrange(tr)
         if len(xrt) == 0:
@@ -1067,36 +1071,31 @@ class Rep(object):
                 if i == 0:
                     prev_s = s
                     continue
-                if log:
-                    print " > comparing source", prev_s, s
+                logger(log, " comparing source", prev_s, s)
                 self._wait_propagate(self.srcdb(prev_s), self.srcdb(s))
                 prev_s = s
         elif len(xrs) == 1 and len(xrt) == 1:
-            print " > checking if target and source equal", xrs[0], xrt[0]
+            logger(" checking if target and source equal", xrs[0], xrt[0])
             self._wait_propagate(self.srcdb(xrs[0]), self.tgtdb(xrt[0]))
         elif len(xrs) == 1 and len(xrt) > 1:
             s = xrs[0]
             for t in xrt:
-                if log:
-                    print " > comparing target ", t
+                logger(log, " comparing target ", t)
                 self._wait_propagate(self.srcdb(s), self.tgtdb(t))
         elif len(xrs) > 1 and len(xrt) == 1:
             t = xrt[0]
             for s in xrs:
-                if log:
-                    print " > comparing source", s
+                logger(log, " comparing source", s)
                 self._wait_propagate(self.srcdb(s), self.tgtdb(t))
         elif len(xrt) == len(xrs):
             for (s, t) in izip(xrs, xrt):
-                if log:
-                    print " > comparing source-target pair", s, t
+                logger(log, " comparing source-target pair", s, t)
                 self._wait_propagate(self.srcdb(s), self.tgtdb(t))
         else:
             raise ValueError("Cannot compare source and target dbs %s %s" % (
                 sr, tr))
-        if log:
-            dt = time.time() - t0
-            print " > changes propagated in at least %.1f sec" % dt
+        dt = time.time() - t0
+        logger(log, "changes propagated in at least %.1f sec" % dt)
 
     def _wait_propagate(self, sr, tr):
         _wait_to_propagate(sr, tr, self.prefix,
@@ -1121,11 +1120,11 @@ class Rep(object):
         return doc
 
     def _clean_rep_docs(self):
-        print "\n > cleaning existing docs from rep db:", self.rdb.name,\
-            "doc prefix:", self.prefix
+        logger("cleaning existing docs from rep db:", self.rdb.name,
+               "doc prefix:", self.prefix)
         _clean_docs(db=self.rdb, srv=self.repsrv, prefix=self.prefix)
         prefix = self.prefix + '-repdb-'
-        print "\n > cleaning up replicator dbs prefix:", prefix
+        logger("cleaning up replicator dbs prefix:", prefix)
         _clean_dbs(prefix=prefix, srv=self.repsrv)
 
 
@@ -1158,8 +1157,8 @@ def _interactive():
         print cfghelp()
         return
     import IPython
-    auto_imports = "from dyno import rep;"\
-                   " from dyno.rep import getsrv, getdb, getrdb, Rep;"\
+    auto_imports = "from couchdyno import rep;"\
+                   " from couchdyno.rep import getsrv, getdb, getrdb, Rep;"\
                    " import couchdb"
     IPython.start_ipython(argv=["-c", "'%s'" % auto_imports, "-i"])
 
@@ -1230,16 +1229,15 @@ def _updocs(db, num, prefix, rand_ids, attachments, extra_data):
             if res[0]:
                 doc_id = res[1]
                 doc_rev = res[2]
-                # print " > updated doc", db.name, doc_id, doc_rev
                 if 'conflict' in doc_rev:
                     conflicts.add(doc_id)
                     continue
                 if attachments:
                     to_attach[doc_id] = doc_rev
             else:
-                print " > ERROR:", db.name, res[1], res[2]
+                logger("ERROR:", db.name, res[1], res[2])
         if conflicts:
-            print " > WARNING: found", len(conflicts), " conflicts, retrying"
+            logger("WARNING: found", len(conflicts), " conflicts, retrying")
         else:
             retry = False
 
@@ -1272,7 +1270,6 @@ def _put_attachments(db, doc_id, doc_rev, attachments):
             val_str = "x" * val
         else:
             val_str = str(val)
-        #  print "   > put attachment:", db.name, doc, name_str, len(val_str)
         db.put_attachment(doc, val_str, filename=name_str)
 
 
@@ -1347,7 +1344,7 @@ def _rdb_updater(repsrv, rdb, prefix, dociter, db_per_doc):
             ok += 1
         else:
             fail += 1
-            print "  ! ERROR:", rdb.name, res[1], res[2]
+            logger(" ! ERROR:", rdb.name, res[1], res[2])
 
 
 def _rdb_and_doc(rdbsrv, prefix, n, doc):
@@ -1404,10 +1401,9 @@ def _create_range_dbs(lo, hi, prefix, reset=False, srv=None):
         return
     missing_list = list(missing_dbs)
     missing_list.sort()
-    print "\nCreating", len(missing_list), "databases"
     for dbname in missing_list:
         srv.create(dbname)
-        # print "  > created db", dbname
+        logger("created db", dbname)
 
 
 def _remote_url(srv, dbname):
@@ -1430,7 +1426,7 @@ def _get_incomplete(rdb, prefix):
     return res
 
 
-@retry(lambda x: x == {}, 3600, 20, False)
+@retry(lambda x: x == {}, 3600, 10, False)
 def _wait_to_complete(rdb, prefix):
     return _get_incomplete(rdb=rdb, prefix=prefix)
 
@@ -1471,7 +1467,7 @@ def _contains(db1, db2, prefix):
     return True
 
 
-@retry(True, 3600, 20, False)
+@retry(True, 3600, 10, False)
 def _wait_to_propagate(db1, db2, prefix):
     return _contains(db1=db1, db2=db2, prefix=prefix)
 

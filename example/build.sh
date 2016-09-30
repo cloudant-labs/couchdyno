@@ -28,7 +28,7 @@ else
     . ./venv/bin/activate
 fi
 
-rm -rf build dist dyno.egg-info
+rm -rf build dist couchdyno.egg-info
 python setup.py install -q
 
 echo "Install finished"

@@ -14,18 +14,18 @@ used for a simple db benchmarks or testing.
  * `./build.sh` :
    - Creates a local virtualenv environment ./venv
    - Installs requirements
-   - Installs dyno scripts in ./venv/bin
+   - Installs couchdyno scripts in ./venv/bin
 
- * `./venv/bin/dyno-setup [options...] DB` to set up
+ * `./venv/bin/couchdyno-setup [options...] DB` to set up
 
- * `./venv/bin/dyno-execute DB` to execute one update cycle
+ * `./venv/bin/couchdyno-execute DB` to execute one update cycle
    (or use with cron to run periodically, see section below)
 
- * `./venv/bin/dyno-info DB` to inspect latest stats
+ * `./venv/bin/couchdyno-info DB` to inspect latest stats
 
 Note: DB can include username and password
 
-dyno-setup : sets up a database, and records a few
+couchdyno-setup : sets up a database, and records a few
 parameters in it such as:
 
   * -t | --total : total number of documents, i.e. how many test
@@ -37,12 +37,12 @@ It also takes a -f | --force parameter which will delete and
 re-create the database. By default if a database is already created,
 this script will show an error.
 
-dyno-execute : reads the parameters from the database and
+couchdyno-execute : reads the parameters from the database and
 updates update-per-run number of documents in it. For ex.: if
 database contains documents 0,1,2,3,4, and update-per-run=3,
 on first run it will update [0,1,2], then [3,4,0], then [1,2,3] etc.
 
-dyno-execute can optinally run continuously using
+couchdyno-execute can optinally run continuously using
 -c | --continuous <seconds> option, which will keep running the
 execute code in an infinite loop with <seconds> sleep in between cycles,
 
@@ -54,7 +54,7 @@ Examples
 --------
 
 ```
-$ ./venv/bin/dyno-setup https://btst:{pass}@btst.cloudant.com/cdyno1
+$ ./venv/bin/couchdyno-setup https://btst:{pass}@btst.cloudant.com/ccouchdyno1
 ```
 
 ```
@@ -70,16 +70,16 @@ Saved configuration:
  . total : 1000
  . updates : 10
  . version : 1
-run dyno-execute to start updating documents.
+run couchdyno-execute to start updating documents.
 ```
 
-After this cdyno1 data will contain a single metadata document which
+After this ccouchdyno1 data will contain a single metadata document which
 saves all the parameters (size=1000B, total=1000 docs, on each run
 update 10 of them).
 
 
 ```
-$ ./venv/bin/dyno-execute https://btst:{pass}@btst.cloudant.com/cdyno1
+$ ./venv/bin/couchdyno-execute https://btst:{pass}@btst.cloudant.com/ccouchdyno1
 ```
 
 ```
@@ -129,17 +129,17 @@ Example of crontab entries:
 Run every day:
 
 ```
-@daily <pathto>/dyno-execute <dburl>
+@daily <pathto>/couchdyno-execute <dburl>
 ```
 
 Every minute:
 
 ```
-* * * * * <pathto>/dyno-execute <dburl>
+* * * * * <pathto>/couchdyno-execute <dburl>
 ```
 
 10pm on weekdays only:
 
 ```
-0 22 * * 1-5  <pathto>/dyno-execute <dburl>
+0 22 * * 1-5  <pathto>/couchdyno-execute <dburl>
 ```

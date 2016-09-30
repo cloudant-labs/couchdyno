@@ -7,7 +7,7 @@ Utility which updates a configured number of documents in a database
 during each execution cycle. This can be used to model a database
 which gets continuously updated over days, weeks, months, etc.
 
-[README](README_dyno.md)
+[README](README_couchdyno.md)
 
 
 Rep

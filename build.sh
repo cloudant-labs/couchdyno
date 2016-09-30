@@ -14,7 +14,7 @@ else
     exit 1
 fi
 
-if [ ! -f ./venv/bin/dyno-execute ]; then
+if [ ! -f ./venv/bin/couchdyno-execute ]; then
     rm -rf venv
     virtualenv venv
     . ./venv/bin/activate
@@ -24,13 +24,13 @@ else
     . ./venv/bin/activate
 fi
 
-rm -rf build dist dyno.egg-info
+rm -rf build dist couchdyno.egg-info
 python setup.py install -q
 
 echo "Install finished"
 echo
 echo "Can now run: "
-echo "    ./venv/bin/dyno-{setup|execute|info}"
+echo "    ./venv/bin/couchdyno-{setup|execute|info}"
 echo "    ./venv/bin/rep"
 
 

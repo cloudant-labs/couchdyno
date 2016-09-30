@@ -1,9 +1,9 @@
 import time
 import pytest
 import couchdb
-from dyno.cluster import get_cluster
-from dyno.cfg import unused_args, getcfg
-from dyno.rep import Rep
+from couchdyno.cluster import get_cluster
+from couchdyno.cfg import unused_args, getcfg
+from couchdyno.rep import Rep
 
 
 QUIET_PERIOD = 2

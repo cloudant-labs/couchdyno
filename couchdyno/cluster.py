@@ -7,7 +7,7 @@ import atexit
 import tempfile
 import subprocess as sp
 from ConfigParser import SafeConfigParser as Ini
-from cfg import getcfg
+from cfg import getcfg, logger
 from rep import Rep
 
 
@@ -116,20 +116,20 @@ class Cluster(object):
         """
         self.stop()
         workdir = self._cp(self.tmpdir)
-        print "Working directory:", workdir
-        print "Running make."
+        logger("Working directory:", workdir)
+        logger("Running make.")
         run("make", cwd=workdir, stdout=self.devnull)
         if self.reset_data:
             data_dir = os.path.join(workdir, "dev", "lib")
-            print "Resetting data dir: ", data_dir
+            logger("Resetting data dir: ", data_dir)
             run("rm -rf %s/*" % data_dir)
             log_dir = os.path.join(workdir, "dev", "logs")
-            print "Cleaning logs:", log_dir
+            logger("Cleaning logs:", log_dir)
             run("rm -rf %s/*" % log_dir)
         self._checkport(self.port)
         self._override_settings(workdir, settings)
         cmd = "dev/run --admin=%s:%s" % (self.user, self.password)
-        print "Starting:", cmd
+        logger("Starting:", cmd)
         self.proc = sp.Popen(cmd, cwd=workdir, stdout=self.devnull, shell=True)
         time.sleep(4)
         if not self.alive:
@@ -146,7 +146,7 @@ class Cluster(object):
 
     def stop(self):
         if not self.alive:
-            print "Trying to stop other dev cluster instances..."
+            logger("Trying to stop other dev cluster instances...")
             kill_nodes = "pkill -f 'beam.smp.*127.0.0.1 -setcookie monster'"
             run(kill_nodes, stdout=self.devnull, skip_check=True)
             kill_dev_run = "pkill -f 'dev/run --admin='"
@@ -210,23 +210,23 @@ class Cluster(object):
                 if tries > 0:
                     time.sleep(5)
                     tries -= 1
-                    print "Port 15984 is in use, waiting. Tries left:", tries
+                    logger("Port 15984 is in use, waiting. Tries left:", tries)
                     continue
                 else:
                     raise Exception("Port %s is already in use " % port)
 
     def _tmpdir(self, tmpdir):
         if tmpdir is None:
-            tmpdir = tempfile.mkdtemp(prefix="rdyno_cluster_tmpdir_")
-            print "Created temp directory: ", tmpdir
+            tmpdir = tempfile.mkdtemp(prefix="couchdyno_tmpdir_")
+            logger("Created temp directory: ", tmpdir)
         tmpdir = os.path.realpath(os.path.abspath(os.path.expanduser(tmpdir)))
-        print "Using tmpdir:", tmpdir
+        logger("Using tmpdir:", tmpdir)
         return self._validate_dir(tmpdir)
 
     def _maybe_configure(self, src):
         src_dir = os.path.join(src, "src")
         if not os.path.exists(src_dir):
-            print "Running './configure' in", src
+            logger("Running './configure' in", src)
             cloudant_config = os.path.join(src, "rebar.config.paas.script")
             asf_config = os.path.join(src, "rebar.config.script")
             if os.path.exists(cloudant_config):
@@ -236,7 +236,7 @@ class Cluster(object):
                     stdout=self.devnull, cwd=src)
             else:
                 raise Exception("Could not find rebar config file in %s" % src)
-        print "Trying to run make."
+        logger("Trying to run make.")
         run("make", cwd=src, stdout=self.devnull)
 
     def _ini(self, src):
@@ -268,7 +268,7 @@ class Cluster(object):
         if not settings:
             return
         for s in settings:
-            print "  %s.%s = %s " % (s[0], s[1], s[2])
+            logger("  %s.%s = %s " % (s[0], s[1], s[2]))
         assert isinstance(settings, list)
         assert isinstance(settings[0], tuple)
         assert len(settings[0]) == 3
@@ -298,16 +298,16 @@ class Cluster(object):
     @classmethod
     def _atexit_cleanup(cls):
         for cluster in list(cls._running):
-            print "\nStopping cluster:", cluster
+            logger("\nStopping cluster:", cluster)
             cluster.stop()
-            print "\nCleaning up cluster:", cluster
+            logger("\nCleaning up cluster:", cluster)
             cluster.cleanup()
 
 
 def run(cmd, **kw):
     skip_check = kw.pop('skip_check', False)
     if LOG_COMMANDS:
-        print "  RUN %s" % cmd
+        logger("  RUN %s" % cmd)
     if skip_check:
         return sp.call(shlex.split(cmd), **kw)
     else:

@@ -3,7 +3,7 @@ This module is responsible for configuration. It uses ConfigArgParse package
 ConfigArgParse knows how to obtain configuration from various sources and it
 and used a fixed override order:
 
- code defaults > ~/.dyno.cfg config file > env vars REP_* > command line
+ code defaults > ~/.couchdyno.cfg config file > env vars REP_* > command line
 
 Configuration are defined in the CFG_DEFAULTS module list.
 
@@ -22,14 +22,19 @@ import configargparse
 
 
 # Specify list of files where to look for config options to load
-CFG_FILES = ['~/.dyno.cfg', './dyno.cfg']
+CFG_FILES = [
+    '~/.couchdyno.cfg',
+    './couchdyno.cfg',
+    '~/.dyno.cfg',
+    './dyno.cfg'
+]
 
 
 CFG_DEFAULTS = [
 
     #  --configname, default, env_varname, help_string
 
-    ('prefix', 'rdyno', 'REP_PREFIX',
+    ('prefix', 'cdyno', 'REP_PREFIX',
      'Prefix used for dbs and docs'),
 
     ('timeout', 0, 'REP_TIMEOUT',
@@ -89,6 +94,22 @@ CFG_DEFAULTS = [
 _parser = None
 _remaining_args = None
 _opts = None
+
+
+def logger(*args):
+    if not args:
+        print ""
+    if isinstance(args[0], int) or isinstance(args[0], bool):
+        if not args[0]:
+            return
+        args = args[1:]
+    logstr = " ".join([str(a) for a in args])
+    if not logstr:
+        return
+    if logstr[0] == "\n":
+        print
+        logstr = logstr[1:]
+    print " > ", logstr
 
 
 def parse():

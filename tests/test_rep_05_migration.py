@@ -16,7 +16,7 @@ def test_migration_error(rep):
     rep.replicate_1_to_n_and_compare(1, num=1, normal=False,
                                      rep_params=rep_params)
     time.sleep(10)
-    rdoc = rdb['rdyno-0000001-0000002']
+    rdoc = rdb['cdyno-0000001-0000002']
     assert '_replication_state' not in rdoc
     assert '_replication_state_reason' not in rdoc
     assert rdoc['other_random'] == 'data'
@@ -33,7 +33,7 @@ def test_migration_triggered(rep):
     rep.replicate_1_to_n_and_compare(1, num=1, normal=False,
                                      rep_params=rep_params)
     time.sleep(10)
-    rdoc = rdb['rdyno-0000001-0000002']
+    rdoc = rdb['cdyno-0000001-0000002']
     assert '_replication_state' not in rdoc
     assert '_replication_state_reason' not in rdoc
     assert rdoc['other_random'] == 'data'
@@ -52,6 +52,6 @@ def test_migration_downgrade_failed(rep):
     rep.replicate_1_to_n_and_compare(1, num=1, normal=False,
                                      rep_params=rep_params)
     time.sleep(10)
-    rdoc = rdb['rdyno-0000001-0000002']
+    rdoc = rdb['cdyno-0000001-0000002']
     assert '_replication_state' in rdoc
     assert rdoc['_replication_state'] == 'triggered'

@@ -11,7 +11,7 @@ DEFAULT_TOTAL = 1000
 DEFAULT_SIZE = 1000
 DEFAULT_UPDATES = 10
 VERSION = 1
-IDPAT = 'dyno_%012d'
+IDPAT = 'cdyno_%012d'
 HISTORY_MAX = 1000
 FILL_BATCH = 100000
 
@@ -21,7 +21,7 @@ FILL_BATCH = 100000
 def setup():
     """
     Script endpoint for setup. This is for running once and setting up
-    a database to be used for dyno-execute endpoint later.
+    a database to be used for couchdyno-execute endpoint later.
     """
     p = _argparser('Setup load test. Creates DB and saves settings.')
     p.add_argument('-t', '--total', type=int, default=DEFAULT_TOTAL,
@@ -59,7 +59,7 @@ def setup():
             print
         _update_docs(db, metadoc, updates=left)
         print "Database filled"
-    print "Run 'dyno-execute' periodically to start updating documents."
+    print "Run 'couchdyno-execute' periodically to start updating documents."
     exit(0)
 
 
@@ -77,7 +77,7 @@ def execute():
     args = p.parse_args()
     db = _get_db(args.dburl, create=False)
     if db is None:
-        print "ERROR: DB not found. Did you run dyno-setup first?"
+        print "ERROR: DB not found. Did you run couchdyno-setup first?"
         exit(3)
     metadoc = MetaDoc().load(db)
     c = 0
@@ -96,7 +96,7 @@ def execute():
 
 def info():
     """
-    Script endpoint to show setup and run statistics for dyno.
+    Script endpoint to show setup and run statistics for couchdyno.
     """
     p = _argparser('Get load test information')
     p.add_argument('-d', '--daily-census', action="store_true", default=False,
@@ -106,7 +106,7 @@ def info():
     args = p.parse_args()
     db = _get_db(args.dburl, create=False)
     if db is None:
-        print "ERROR: DB not found. Did you run dyno-setup first?"
+        print "ERROR: DB not found. Did you run couchdyno-setup first?"
         exit(1)
     info = db.info()
     print "DB Info:"
@@ -199,9 +199,9 @@ def _info_days(db):
 
 
 def _times_view():
-    return ViewDefinition('dyno_times', 'times', '''
+    return ViewDefinition('couchdyno_times', 'times', '''
 function(doc) {
-      if(doc._id.indexOf("dyno_") === 0 &&  doc.ts) {
+      if(doc._id.indexOf("couchdyno_") === 0 &&  doc.ts) {
          emit(doc.ts, null);
       }
 }
@@ -209,9 +209,9 @@ function(doc) {
 
 
 def _conflicts_view():
-    return ViewDefinition('dyno_conflicts', 'conflicts', '''
+    return ViewDefinition('couchdyno_conflicts', 'conflicts', '''
 function(doc) {
-      if(doc._id.indexOf("dyno_") === 0 && doc._conflicts) {
+      if(doc._id.indexOf("couchdyno_") === 0 && doc._conflicts) {
          emit(doc._id, doc._conflicts.length);
       }
 }
@@ -220,9 +220,9 @@ function(doc) {
 
 class MetaDoc(dict):
     """
-    Simple class to represent and manipulate dyno metadata doc.
+    Simple class to represent and manipulate couchdyno metadata doc.
     """
-    ID = 'dyno_meta'
+    ID = 'couchdyno_meta'
 
     def __init__(self, *args, **kwargs):
         super(MetaDoc, self).__init__(*args, **kwargs)
@@ -252,7 +252,7 @@ class MetaDoc(dict):
         """
         metadoc = db.get(self.ID)
         if not metadoc:
-            raise Exception("%s missing in %s, was run dyno-setup run?" % (
+            raise Exception("%s missing in %s, run couchdyno-setup?" % (
                 self.ID, db))
         self.update(metadoc)
         return self

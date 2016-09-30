@@ -1,6 +1,6 @@
-This is an example project which uses dyno as a dependency.
+This is an example project which uses couchdyno as a dependency.
 
-`./build.sh` fetches dyno as a dependency.
+`./build.sh` fetches couchdyno as a dependency.
 
 Then run ./mytest.py which imports and uses "rep" module to run a simple test.
 

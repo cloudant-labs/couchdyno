@@ -1,19 +1,19 @@
 from setuptools import setup
 
 setup(
-    name="dyno",
-    version="0.6.0",
-    url="https://github.com/cloudant/dyno",
+    name="couchdyno",
+    version="0.7.0",
+    url="https://github.com/cloudant-labs/couchdyno",
     author="Nick Vatamaniuc",
     author_email="nvatama@us.ibm.com",
     install_requires=["CouchDB","ipython", "ConfigArgParse", "pytest"],
-    packages = ["dyno"],
+    packages = ["couchdyno"],
     entry_points={
         'console_scripts': [
-            'dyno-info=dyno.dyno:info',
-            'dyno-setup=dyno.dyno:setup',
-            'dyno-execute=dyno.dyno:execute',
-            'rep=dyno.rep:_interactive',
+            'couchdyno-info=couchdyno.couchdyno:info',
+            'couchdyno-setup=couchdyno.couchdyno:setup',
+            'couchdyno-execute=couchdyno.couchdyno:execute',
+            'rep=couchdyno.rep:_interactive',
         ]
     }
 )
