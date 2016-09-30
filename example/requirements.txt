@@ -1,1 +1,2 @@
-git+https://github.com/cloudant/couchdyno.git@v0.6.0
+git+https://github.com/cloudant-labs/couchdyno.git@v1.0.0
+
