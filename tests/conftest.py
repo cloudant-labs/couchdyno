@@ -18,10 +18,10 @@ QUICK_REPLICATION = [
 ]
 
 
-TIGHT_SCHEDULER = [
+SHORT_SCHEDULER = [
     'replicator.max_jobs=2',
     'replicator.max_churn=2',
-    'replicator.interval=7000'
+    'replicator.interval=10000'
 ]
 
 
@@ -91,13 +91,13 @@ def running_local_cluster(local_cluster):
 
 
 @pytest.fixture(scope="module")
-def running_local_cluster_with_tight_scheduler(local_cluster):
+def running_local_cluster_with_short_scheduler(local_cluster):
     if local_cluster is None:
         print "\n * No local cluster specified"
         yield None
     else:
         print "\n * Starting cluster", local_cluster
-        settings = QUICK_REPLICATION + TIGHT_SCHEDULER
+        settings = QUICK_REPLICATION + SHORT_SCHEDULER
         with local_cluster.running(settings) as running_cluster:
             time.sleep(START_PERIOD + 1)
             yield running_cluster
@@ -121,8 +121,8 @@ def get_running_cluster():
 
 
 @pytest.fixture(scope="module")
-def rep(session_cfg, running_local_cluster_with_tight_scheduler):
-    running_cluster = running_local_cluster_with_tight_scheduler
+def rep(session_cfg, running_local_cluster_with_short_scheduler):
+    running_cluster = running_local_cluster_with_short_scheduler
     global _rep, _running_cluster
     if running_cluster:
         _running_cluster = running_cluster
