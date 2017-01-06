@@ -206,7 +206,8 @@ class Cluster(object):
                 s.bind(('127.0.0.1', port))
                 s.close()
                 return
-            except socket.error:
+            except socket.error,e:
+                logger("Port error: ", e)
                 if tries > 0:
                     time.sleep(5)
                     tries -= 1

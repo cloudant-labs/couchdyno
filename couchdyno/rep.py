@@ -193,6 +193,7 @@ def getdb(db, srv=None, create=True, reset=False):
     srv = getsrv(srv)
     if reset:
         if dbname in srv:
+            logger("removing db due to reset", dbname)
             del srv[dbname]
         try:
             return srv.create(dbname)
@@ -246,6 +247,9 @@ class Rep(object):
         rep_params['connection_timeout'] = int(cfg.connection_timeout)
         rep_params['create_target'] = _2bool(cfg.create_target)
         rep_params['http_connections'] = int(cfg.http_connections)
+        rep_params['retries_per_request'] = int(cfg.retries_per_request)
+        if cfg.proxy:
+            rep_params['proxy'] = cfg.proxy
         self.rep_params = rep_params
         self.src_params = {}
         self.prefix = str(cfg.prefix)
@@ -1168,6 +1172,7 @@ def _clean_dbs(prefix, srv):
     cnt = 0
     for dbname in srv:
         if dbname.startswith(prefix):
+            logger("removing db", dbname)
             del srv[dbname]
             cnt += 1
     return cnt
@@ -1393,6 +1398,7 @@ def _create_range_dbs(lo, hi, prefix, reset=False, srv=None):
         found_dbs = list(want_dbs & existing_dbs)
         found_dbs.sort()
         for dbname in found_dbs:
+            logger("removing db before re-creating", dbname)
             del srv[dbname]
         missing_dbs = want_dbs
     else:

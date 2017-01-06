@@ -67,6 +67,12 @@ CFG_DEFAULTS = [
     ('create_target', False, 'REP_CREATE_TARGET',
      'Replication parameter'),
 
+    ('retries_per_request', 10, 'REP_RETRIES_PER_REQUEST',
+     'Replication retries_per_request parameter'),
+
+    ('proxy', None, 'REP_PROXY',
+     'Replication proxy'),
+
     #  Settings below apply when using a locally running cluster
     #  This cluster can be controlled from the test framework, nodes can be
     #  stopped, its data directory can be modified, and so on.
