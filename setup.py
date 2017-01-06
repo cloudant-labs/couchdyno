@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name="couchdyno",
-    version="1.0.0",
+    version="1.0.1",
     url="https://github.com/cloudant-labs/couchdyno",
     author="Nick Vatamaniuc",
     author_email="nvatama@us.ibm.com",
