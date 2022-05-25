@@ -6,9 +6,9 @@ import socket
 import atexit
 import tempfile
 import subprocess as sp
-from ConfigParser import SafeConfigParser as Ini
-from cfg import getcfg, logger
-from rep import Rep
+from configparser import SafeConfigParser as Ini
+from .cfg import getcfg, logger
+from .rep import Rep
 
 
 USER = 'adm'
@@ -206,7 +206,7 @@ class Cluster(object):
                 s.bind(('127.0.0.1', port))
                 s.close()
                 return
-            except socket.error,e:
+            except socket.error as e:
                 logger("Port error: ", e)
                 if tries > 0:
                     time.sleep(5)
@@ -245,7 +245,7 @@ class Cluster(object):
 
     def _validate_dir(self, dpath):
         assert dpath, "Cannot have an empty directory path"
-        assert isinstance(dpath, basestring), "Directory path must be a string"
+        assert isinstance(dpath, str), "Directory path must be a string"
         dpath = os.path.abspath(os.path.expanduser(dpath))
         dpath = os.path.realpath(dpath)
         assert dpath != '/', "Cannot use root, probably a mistake"
@@ -284,7 +284,7 @@ class Cluster(object):
             ini.write(fh)
 
     def _get_source(self, src):
-        if isinstance(src, basestring) and '://' not in src:
+        if isinstance(src, str) and '://' not in src:
             return self._validate_dir(src)
         dest = os.path.join(self.tmpdir, "src_clone")
         run("rm -rf %s" % dest)
@@ -333,7 +333,7 @@ def _parse_settings(settings):
         return None
     if isinstance(settings, list):
         return [_parse_setting(s) for s in settings]
-    elif isinstance(settings, basestring):
+    elif isinstance(settings, str):
         settings = settings.strip()
         return [_parse_setting(s) for s in settings.split(',')]
     raise ValueError("Invalid settings specification: %s" % settings)
@@ -342,7 +342,7 @@ def _parse_settings(settings):
 def _parse_setting(setting):
     if isinstance(setting, tuple) and len(setting) == 3:
         return setting
-    elif isinstance(setting, basestring):
+    elif isinstance(setting, str):
         section, val_and_eq = setting.split('.', 1)
         val, eq = val_and_eq.rsplit('=', 1)
         return (section, val, eq)

@@ -3,8 +3,8 @@ import time
 import copy
 import uuid
 import couchdb
-from itertools import izip
-from cfg import getcfg, cfghelp, logger
+
+from .cfg import getcfg, cfghelp, logger
 
 # Retry times scheduled passed to CouchDB driver to use
 # in case of connection failures
@@ -131,7 +131,7 @@ def retry(check=bool, timeout=None, dt=10, log=True):
                     raise RetryTimeoutExceeded("Timeout : %s" % _timeout)
                 try:
                     r = f(*args, **kw)
-                except Exception, e:
+                except Exception as e:
                     fn = _fname(f)
                     logger("function", fn, "threw exception", e, "retrying")
                     t += 1
@@ -167,7 +167,7 @@ def getsrv(srv=None, timeout=0):
         sess = couchdb.Session(retry_delays=RETRY_DELAYS)
         sobj = couchdb.Server(cfg.server_url, session=sess)
         return sobj
-    elif isinstance(srv, basestring):
+    elif isinstance(srv, str):
         if timeout > 0:
             sess = couchdb.Session(timeout=timeout, retry_delays=RETRY_DELAYS)
         else:
@@ -412,7 +412,7 @@ class Rep(object):
         sure filter document is written to all those databases.
         """
         lo, hi = _db_range_validate(sr)
-        for i in xrange(lo, hi+1):
+        for i in range(lo, hi+1):
             self.updoc(self.srcdb(i), filter_ddoc)
 
     def replicate_n_to_n(self, sr, tr, normal=False, db_per_doc=False,
@@ -440,7 +440,7 @@ class Rep(object):
         params = self.rep_params.copy()
         params.update(rep_params)
         params['continuous'] = not normal
-        ipairs = izip(_xrange(sr), _xrange(tr))
+        ipairs = zip(_xrange(sr), _xrange(tr))
 
         def dociter():
             for s, t in ipairs:
@@ -918,7 +918,7 @@ class Rep(object):
         params = filter_params.copy()
         query_params = params.pop('query_params', None)
         assert set(params.keys()) == set(['js', 'mango', 'view', 'doc_ids'])
-        specified = dict([(k, v) for (k, v) in params.items()
+        specified = dict([(k, v) for (k, v) in list(params.items())
                           if v is not None])
         if not specified:
             return (None, rep_params)
@@ -926,14 +926,14 @@ class Rep(object):
             raise ValueError("Only 1 filter can be specified %s" % specified)
         fname, fbody = specified.popitem()
         ddoc = None
-        if fname is 'js':
+        if fname == 'js':
             ddoc, rep_params_up = self._filter_js(fbody,
                                                   query_params=query_params)
-        if fname is 'mango':
+        if fname == 'mango':
             ddoc, rep_params_up = self._filter_mango(fbody)
-        if fname is 'doc_ids':
+        if fname == 'doc_ids':
             ddoc, rep_params_up = self._filter_doc_ids(fbody)
-        if fname is 'view':
+        if fname == 'view':
             ddoc, rep_params_up = self._filter_view(fbody)
         if rep_params is not None:
             rep_params_up.update(rep_params)
@@ -946,7 +946,7 @@ class Rep(object):
         """
         if filter_body is True:
             filter_body = "function(doc, req) {return true;}"
-        assert isinstance(filter_body, basestring), "Filter body must a string"
+        assert isinstance(filter_body, str), "Filter body must a string"
         filter_doc = '%s_filterdoc' % self.prefix
         filter_name = '%s_filtername' % self.prefix
         ddoc = {
@@ -992,7 +992,7 @@ class Rep(object):
         """
         if map_body is True:
             map_body = "function(doc) { emit(doc._id, null); };"
-        assert isinstance(map_body, basestring), "View map must be a string"
+        assert isinstance(map_body, str), "View map must be a string"
         view_doc = '%s_viewdoc' % self.prefix
         view_name = '%s_viewname' % self.prefix
         ddoc = {
@@ -1039,7 +1039,7 @@ class Rep(object):
         self.create_dbs(sr, tr, reset=reset)
         self.sync_filter(filter_ddoc, sr)
         if normal:
-            for cycle in xrange(1, cycles+1):
+            for cycle in range(1, cycles+1):
                 if cycles > 1:
                     logger("  ----- cycle", cycle, "------")
                 fill_callback()
@@ -1054,7 +1054,7 @@ class Rep(object):
         else:
             rep_method(sr, tr, normal=False, db_per_doc=db_per_doc,
                        rep_params=rep_params)
-            for cycle in xrange(1, cycles+1):
+            for cycle in range(1, cycles+1):
                 if cycles > 1:
                     logger("   ------- cycle", cycle, "-------")
                 fill_callback()
@@ -1092,7 +1092,7 @@ class Rep(object):
                 logger(log, " comparing source", s)
                 self._wait_propagate(self.srcdb(s), self.tgtdb(t))
         elif len(xrt) == len(xrs):
-            for (s, t) in izip(xrs, xrt):
+            for (s, t) in zip(xrs, xrt):
                 logger(log, " comparing source-target pair", s, t)
                 self._wait_propagate(self.srcdb(s), self.tgtdb(t))
         else:
@@ -1143,28 +1143,28 @@ def _interactive():
     couchdb python modules.
     """
 
-    print "Interactive replication toolbox"
-    print " rep, rep.getsrv, rep.getrdb and couchdb modules are auto-imported"
-    print " Assumes cluster runs on http://adm:pass@localhost:5984"
-    print " Type rep. and press <TAB> to auto-complete available functions"
-    print
-    print " Examples:"
-    print
-    print "  * rep.rep.replicate_1_to_n_and_compare(2, cycles=2)"
-    print "    # replicate 1 source to 2 targets (1->2, 1->3). Fill source"
-    print "    # (add a document) and then wait for all targets to have same"
-    print "    # data. Do it 2 times (cycles=2)."
-    print
-    print "  * rep.getsrv() # get a CouchDB Server instance"
-    print
+    print("Interactive replication toolbox")
+    print(" rep, rep.getsrv, rep.getrdb and couchdb modules are auto-imported")
+    print(" Assumes cluster runs on http://adm:pass@localhost:5984")
+    print(" Type rep. and press <TAB> to auto-complete available functions")
+    print()
+    print(" Examples:")
+    print()
+    print("  * rep.rep.replicate_1_to_n_and_compare(2, cycles=2)")
+    print("    # replicate 1 source to 2 targets (1->2, 1->3). Fill source")
+    print("    # (add a document) and then wait for all targets to have same")
+    print("    # data. Do it 2 times (cycles=2).")
+    print()
+    print("  * rep.getsrv() # get a CouchDB Server instance")
+    print()
     if '-h' in sys.argv or '--help' in sys.argv:
-        print cfghelp()
+        print(cfghelp())
         return
     import IPython
     auto_imports = "from couchdyno import rep;"\
                    " from couchdyno.rep import getsrv, getdb, getrdb, Rep;"\
                    " import couchdb"
-    IPython.start_ipython(argv=["-c", "'%s'" % auto_imports, "-i"])
+    IPython.start_ipython(argv=["-c", "%s" % auto_imports, "-i"])
 
 
 def _clean_dbs(prefix, srv):
@@ -1179,7 +1179,7 @@ def _clean_dbs(prefix, srv):
 
 
 def _db_range_validate(numrange):
-    if isinstance(numrange, int) or isinstance(numrange, long):
+    if isinstance(numrange, int) or isinstance(numrange, int):
         numrange = (numrange, numrange)
     assert isinstance(numrange, tuple)
     assert len(numrange) == 2
@@ -1192,14 +1192,14 @@ def _db_range_validate(numrange):
 
 
 def _xrange(r):
-    if isinstance(r, int) or isinstance(r, long):
+    if isinstance(r, int) or isinstance(r, int):
         if r <= 0:
             return ()
         r = (r, r)
     assert isinstance(r, tuple)
     assert len(r) == 2
     assert r[0] <= r[1]
-    return xrange(r[0], r[1] + 1)
+    return range(r[0], r[1] + 1)
 
 
 def _updocs(db, num, prefix, rand_ids, attachments, extra_data):
@@ -1246,7 +1246,7 @@ def _updocs(db, num, prefix, rand_ids, attachments, extra_data):
         else:
             retry = False
 
-    for _id, _rev in to_attach.iteritems():
+    for _id, _rev in to_attach.items():
         _put_attachments(db, _id, _rev, attachments)
 
 
@@ -1262,16 +1262,16 @@ def _put_attachments(db, doc_id, doc_rev, attachments):
     """
     if attachments is None:
         attachments = []
-    if isinstance(attachments, int) or isinstance(attachments, long):
+    if isinstance(attachments, int) or isinstance(attachments, int):
         attachments = "x"*attachments
-    if isinstance(attachments, basestring):
+    if isinstance(attachments, str):
         attachments = [("att1", attachments)]
     if isinstance(attachments, dict):
-        attachments = attachments.iteritems()
+        attachments = iter(attachments.items())
     doc = {'_id': doc_id, '_rev': doc_rev}
     for (name, val) in attachments:
         name_str = str(name)
-        if isinstance(val, int) or isinstance(val, long):
+        if isinstance(val, int) or isinstance(val, int):
             val_str = "x" * val
         else:
             val_str = str(val)
@@ -1309,15 +1309,14 @@ def _yield_docs(db, prefix=None, batchsize=500):
 def _batchit(it, batchsize=500):
     """
     This is a batcher. Given an interator and a batchsize,
-    generate lists of up to batchsize items. When done
-    raises StopItration exception.
+    generate lists of up to batchsize items.
     """
     if callable(it):
         it = it()
     while True:
-        batch = [x for (_, x) in izip(xrange(batchsize), it)]
+        batch = [x for (_, x) in zip(range(batchsize), it)]
         if not batch:
-            raise StopIteration
+            return
         yield batch
 
 
@@ -1385,7 +1384,7 @@ def _dbname(num, prefix):
 
 def _fname(f):
     try:
-        return f.func_name
+        return f.__name__
     except:
         return str(f)
 
@@ -1393,7 +1392,7 @@ def _fname(f):
 def _create_range_dbs(lo, hi, prefix, reset=False, srv=None):
     srv = getsrv(srv)
     existing_dbs = set(srv)
-    want_dbs = set((_dbname(i, prefix) for i in xrange(lo, hi+1)))
+    want_dbs = set((_dbname(i, prefix) for i in range(lo, hi+1)))
     if reset:
         found_dbs = list(want_dbs & existing_dbs)
         found_dbs.sort()
@@ -1481,7 +1480,7 @@ def _wait_to_propagate(db1, db2, prefix):
 def _2bool(v):
     if isinstance(v, bool):
         return v
-    elif isinstance(v, basestring):
+    elif isinstance(v, str):
         if v.strip().lower() == 'true':
             return True
         return False

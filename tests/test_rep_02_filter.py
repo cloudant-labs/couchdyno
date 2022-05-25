@@ -33,7 +33,7 @@ def test_n_to_n_doc_ids_filter(normal, attachments):
     rep = conftest.get_rep()
     cfg = rep.getcfg()
     n = 10
-    doc_ids = [cfg.prefix + '-%07d' % i for i in xrange(1, n+1)]
+    doc_ids = [cfg.prefix + '-%07d' % i for i in range(1, n+1)]
     rep.replicate_n_to_n_and_compare(n=10, num=10, normal=normal,
                                      attachments=attachments,
                                      filter_doc_ids=doc_ids)

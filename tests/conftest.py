@@ -69,10 +69,10 @@ def session_cfg():
 def local_cluster(session_cfg):
     cluster = get_cluster(cfg=session_cfg)
     if cluster:
-        print "\n * Setup cluster", cluster
+        print("\n * Setup cluster", cluster)
     yield cluster
     if cluster:
-        print "\n * Clean up cluster", cluster
+        print("\n * Clean up cluster", cluster)
     if cluster:
         cluster.cleanup()
 
@@ -80,28 +80,28 @@ def local_cluster(session_cfg):
 @pytest.fixture(scope="module")
 def running_local_cluster(local_cluster):
     if local_cluster is None:
-        print "\n * No local cluster specified"
+        print("\n * No local cluster specified")
         yield None
     else:
-        print "\n * Starting cluster", local_cluster
+        print("\n * Starting cluster", local_cluster)
         with local_cluster.running(QUICK_REPLICATION) as running_cluster:
             time.sleep(START_PERIOD + 1)
             yield running_cluster
-        print "\n * Stopped cluster", local_cluster
+        print("\n * Stopped cluster", local_cluster)
 
 
 @pytest.fixture(scope="module")
 def running_local_cluster_with_short_scheduler(local_cluster):
     if local_cluster is None:
-        print "\n * No local cluster specified"
+        print("\n * No local cluster specified")
         yield None
     else:
-        print "\n * Starting cluster", local_cluster
+        print("\n * Starting cluster", local_cluster)
         settings = QUICK_REPLICATION + SHORT_SCHEDULER
         with local_cluster.running(settings) as running_cluster:
             time.sleep(START_PERIOD + 1)
             yield running_cluster
-        print "\n * Stopped cluster", local_cluster
+        print("\n * Stopped cluster", local_cluster)
 
 
 _rep = None
@@ -131,10 +131,10 @@ def rep(session_cfg, running_local_cluster_with_short_scheduler):
         _rep.clean()
         _rep = None
     else:
-        print "\n * Setting up module rep as default Rep() instance"
+        print("\n * Setting up module rep as default Rep() instance")
         _running_cluster = running_cluster
         _rep = Rep(cfg=session_cfg)
         yield _rep
         _rep.clean()
-        print "\n * Resetting module rep"
+        print("\n * Resetting module rep")
         _rep = None

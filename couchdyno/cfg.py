@@ -104,7 +104,7 @@ _opts = None
 
 def logger(*args):
     if not args:
-        print ""
+        print("")
     if isinstance(args[0], int) or isinstance(args[0], bool):
         if not args[0]:
             return
@@ -113,9 +113,9 @@ def logger(*args):
     if not logstr:
         return
     if logstr[0] == "\n":
-        print
+        print()
         logstr = logstr[1:]
-    print " > ", logstr
+    print(" > ", logstr)
 
 
 def parse():

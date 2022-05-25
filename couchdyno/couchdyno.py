@@ -3,7 +3,7 @@ import random
 import string
 import argparse
 import datetime
-import urlparse
+import urllib.parse
 import couchdb  # pip : CouchDB==1.0
 from couchdb.design import ViewDefinition
 
@@ -39,27 +39,27 @@ def setup():
     if not args.force:
         db = _get_db(args.dburl, create=False)
         if db is not None:
-            print "ERROR: db:", args.dburl, "already exists"
-            print " To force reset it, use -f|--force"
+            print("ERROR: db:", args.dburl, "already exists")
+            print(" To force reset it, use -f|--force")
             exit(1)
         db = _get_db(args.dburl, create=True)
     else:
         db = _get_db(args.dburl, create=True, reset_db=True)
     metadoc = MetaDoc.from_args(args).save(db)
-    print "Saved configuration:"
+    print("Saved configuration:")
     metadoc.pprint()
     if args.wait_to_fill:
-        print
-        print "Filling up database..."
-        print
+        print()
+        print("Filling up database...")
+        print()
         left = args.total
         while left > FILL_BATCH:
             left -= FILL_BATCH
             _update_docs(db, metadoc, updates=FILL_BATCH)
-            print
+            print()
         _update_docs(db, metadoc, updates=left)
-        print "Database filled"
-    print "Run 'couchdyno-execute' periodically to start updating documents."
+        print("Database filled")
+    print("Run 'couchdyno-execute' periodically to start updating documents.")
     exit(0)
 
 
@@ -77,7 +77,7 @@ def execute():
     args = p.parse_args()
     db = _get_db(args.dburl, create=False)
     if db is None:
-        print "ERROR: DB not found. Did you run couchdyno-setup first?"
+        print("ERROR: DB not found. Did you run couchdyno-setup first?")
         exit(3)
     metadoc = MetaDoc().load(db)
     c = 0
@@ -86,10 +86,10 @@ def execute():
         if args.continuous <= 0:
             break
         c += 1
-        print "Sleeping", args.continuous, "seconds before next run", c
+        print("Sleeping", args.continuous, "seconds before next run", c)
         time.sleep(args.continuous)
-        print
-    print "New state:"
+        print()
+    print("New state:")
     new_metadoc.pprint()
     exit(0)
 
@@ -106,28 +106,28 @@ def info():
     args = p.parse_args()
     db = _get_db(args.dburl, create=False)
     if db is None:
-        print "ERROR: DB not found. Did you run couchdyno-setup first?"
+        print("ERROR: DB not found. Did you run couchdyno-setup first?")
         exit(1)
     info = db.info()
-    print "DB Info:"
-    print " . disk_size:", info['disk_size']
-    print " . doc_count:", info['doc_count']
-    print " . update_seq:", info['update_seq'][:40]+'...'
+    print("DB Info:")
+    print(" . disk_size:", info['disk_size'])
+    print(" . doc_count:", info['doc_count'])
+    print(" . update_seq:", info['update_seq'][:40]+'...')
 
     metadoc = MetaDoc().load(db)
-    print "Dyno Info:"
+    print("Dyno Info:")
     metadoc.pprint()
     history = metadoc['history']
-    print "Update History:"
-    print " . updates", len(history), "/ max kept", HISTORY_MAX
+    print("Update History:")
+    print(" . updates", len(history), "/ max kept", HISTORY_MAX)
     if len(history) > 1:
         t0, tl = history[0][0], history[-1][0]
         t = int(tl - t0)
         t_hours = int(t/3600)
         t_days = '%0.1f' % (t_hours/24.0)
-        print " . earliest update (utc):", _ts_to_iso(t0)
-        print " . last update (utc):", _ts_to_iso(tl)
-        print " . interval (sec/hours/days):", t, "/", t_hours, "/", t_days
+        print(" . earliest update (utc):", _ts_to_iso(t0))
+        print(" . last update (utc):", _ts_to_iso(tl))
+        print(" . interval (sec/hours/days):", t, "/", t_hours, "/", t_days)
         max_errors = 0
         rates = []
         for _, dt, _, updates, errors in history:
@@ -135,10 +135,10 @@ def info():
                 rates.append(updates/float(dt))
             max_errors = max(max_errors, errors)
         if max_errors:
-            print " . max errors seen:", max_errors
+            print(" . max errors seen:", max_errors)
         if len(rates) > 0:
             avg_rate = int(sum(rates) / len(rates))
-            print " . avg doc update rate:", avg_rate, "/ sec"
+            print(" . avg doc update rate:", avg_rate, "/ sec")
     if args.conflicts:
         _info_conflicts(db)
     if args.daily_census:
@@ -155,7 +155,7 @@ def _wait_for_view(db, view, maxwait=100000):
             for r in view(db, descending=True, limit=1):
                 pass
             return
-        except couchdb.http.ServerError, ex:
+        except couchdb.http.ServerError as ex:
             ex_args = ex.args[0]
             if (
                     isinstance(ex_args, tuple) and
@@ -166,9 +166,9 @@ def _wait_for_view(db, view, maxwait=100000):
             ):
                 time_left = int(till - time.time())
                 if time_left <= 0:
-                    print "ERROR: view", view.name, "took >", maxwait
+                    print("ERROR: view", view.name, "took >", maxwait)
                     raise
-                print "... waiting for view, time left:", time_left, "sec."
+                print("... waiting for view, time left:", time_left, "sec.")
                 continue
             else:
                 raise
@@ -180,7 +180,7 @@ def _info_conflicts(db):
     _wait_for_view(db, view)
     vres = list(view(db))
     if len(vres) == 1:
-        print "Conflicts:", vres[0].value
+        print("Conflicts:", vres[0].value)
     elif len(vres) > 1:
         raise ValueError("Expected 1 result from view. Got: " + str(len(vres)))
 
@@ -193,9 +193,9 @@ def _info_days(db):
     for r in db.iterview(view.design+'/'+view.name, batch=100000):
         dinst = datetime.datetime.utcfromtimestamp(int(r.key))
         days.add(dinst.strftime('%Y-%m-%d'))
-    print "Doc update census (per day):"
+    print("Doc update census (per day):")
     for d in sorted(days):
-        print " ->", d
+        print(" ->", d)
 
 
 def _times_view():
@@ -275,23 +275,23 @@ class MetaDoc(dict):
         return self
 
     def pprint(self):
-        for k, v in sorted(self.iteritems()):
+        for k, v in sorted(self.items()):
             if k == '_id' or k == '_rev' or k == 'history':
                 continue
             elif k == 'last_ts':
                 v = "%s (%s)" % (v, _ts_to_iso(v))
             elif k == 'created' and isinstance(v, int):
                 v = "%s (%s)" % (v, _ts_to_iso(v))
-            print " .", str(k), ":", str(v)
+            print(" .", str(k), ":", str(v))
 
 
 def _get_db(dburl, create=True, reset_db=False):
     """
     Get a db handle. Optionally reset / create.
     """
-    sres = urlparse.urlsplit(dburl)
+    sres = urllib.parse.urlsplit(dburl)
     dbname = sres.path.lstrip('/')
-    srv = couchdb.Server(urlparse.urlunsplit(sres._replace(path='', query='')))
+    srv = couchdb.Server(urllib.parse.urlunsplit(sres._replace(path='', query='')))
     srv.version()  # throws if can't connect to server
     if reset_db:
         if dbname in srv:
@@ -328,9 +328,9 @@ def _intervals(start, updates, total):
     updates = min(updates, total)
     wrap = max(0, start + updates - total)
     if wrap > 0:
-        return xrange(start, total), xrange(0, wrap)
+        return range(start, total), range(0, wrap)
     else:
-        return xrange(start, start + updates), xrange(0, 0)
+        return range(start, start + updates), range(0, 0)
 
 
 def _docrevs(db, *intervals):
@@ -354,7 +354,7 @@ def _docrevs(db, *intervals):
 
 
 def _random_data(size):
-    return ''.join(random.choice(string.ascii_lowercase) for _ in xrange(size))
+    return ''.join(random.choice(string.ascii_lowercase) for _ in range(size))
 
 
 def _bulk_update(db, docrevs, size, ts, docids):
@@ -397,14 +397,14 @@ def _update_docs(db, metadoc, updates=0):
     batchsize = _batch_size(size)
     int1, int2 = _intervals(start, updates, total)
     docint1, docint2 = [IDPAT % i for i in int1], [IDPAT % i for i in int2]
-    print "Total:", total, " size:", size, " @:", start, " updating:", updates
+    print("Total:", total, " size:", size, " @:", start, " updating:", updates)
     trev0 = time.time()
     docrevs = _docrevs(db, docint1, docint2)
     trevdt = time.time() - trev0
     revcount = len(docrevs)
     trevrate = int(revcount / trevdt)
     if docrevs:
-        print "%s revs, %.1f sec, @ %s revs/sec" % (revcount, trevdt, trevrate)
+        print("%s revs, %.1f sec, @ %s revs/sec" % (revcount, trevdt, trevrate))
     docint1.extend(docint2)
     ok = 0
     for i in range(0, len(docint1), batchsize):
@@ -413,9 +413,9 @@ def _update_docs(db, metadoc, updates=0):
     errors = updates - ok
     dt = time.time() - t0
     rate = int(updates / dt)
-    print "Updated %s dt: %.3f sec @ %s docs/sec" % (updates, dt, rate)
+    print("Updated %s dt: %.3f sec @ %s docs/sec" % (updates, dt, rate))
     if errors > 0:
-        print "(!)errors:", errors
+        print("(!)errors:", errors)
     return metadoc.checkpoint(db,
                               start=(start + updates) % total,
                               ts=int(t0),
