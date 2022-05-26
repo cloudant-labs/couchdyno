@@ -4,6 +4,7 @@ import conftest
 
 # running_local_cluster is a pytest fixture from conftest.py
 
+
 @conftest.skip_if_not_local
 def test_migration_on_node_failure(running_local_cluster):
     """
@@ -19,12 +20,12 @@ def test_migration_on_node_failure(running_local_cluster):
     targets = 15
     cycles = 4
     docs = 100
-    source_range, target_range = 1, (2, targets+1)
+    source_range, target_range = 1, (2, targets + 1)
     rep.create_dbs(source_range, target_range)
     rep.replicate_1_to_n(source_range, target_range, normal=False)
-    for cycle in range(1, cycles+1):
+    for cycle in range(1, cycles + 1):
         print("\n - cycle", cycle)
-        time.sleep(conftest.QUIET_PERIOD+2)
+        time.sleep(conftest.QUIET_PERIOD + 2)
         rep.fill(source_range, num=docs)
         rep.wait_till_all_equal(source_range, target_range)
         if cycle == 2:

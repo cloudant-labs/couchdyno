@@ -11,8 +11,8 @@ from .cfg import getcfg, logger
 from .rep import Rep
 
 
-USER = 'adm'
-PASSWORD = 'pass'
+USER = "adm"
+PASSWORD = "pass"
 KILL_TIMEOUT = 5
 N1_PORT = 15984
 LOG_COMMANDS = True
@@ -63,7 +63,7 @@ class Cluster(object):
         assert os.path.exists(dev_run)
         assert os.path.exists(self._ini(src))
         # Validate some tools used later
-        self.devnull = open(os.devnull, 'wb')
+        self.devnull = open(os.devnull, "wb")
         run("which erl", stdout=self.devnull)
         run("which erlc", stdout=self.devnull)
         run("which make", stdout=self.devnull)
@@ -140,8 +140,7 @@ class Cluster(object):
             raise Exception("Could not launch cluster: '%s'" % sout)
         self._running.add(self)
         self.workdir = workdir
-        self.url = 'http://%s:%s@localhost:%s' % (
-            self.user, self.password, self.port)
+        self.url = "http://%s:%s@localhost:%s" % (self.user, self.password, self.port)
         return self
 
     def stop(self):
@@ -191,7 +190,12 @@ class Cluster(object):
         else:
             running_str = "n"
         return "<Cluster %s workdir:%s port:%s running?:%s>" % (
-            self.src, self.workdir, self.port, running_str)
+            self.src,
+            self.workdir,
+            self.port,
+            running_str,
+        )
+
     __repr__ = __str__
 
     def _maybe_register_atexit(self):
@@ -203,7 +207,7 @@ class Cluster(object):
         while tries > 0:
             try:
                 s = socket.socket()
-                s.bind(('127.0.0.1', port))
+                s.bind(("127.0.0.1", port))
                 s.close()
                 return
             except socket.error as e:
@@ -233,8 +237,11 @@ class Cluster(object):
             if os.path.exists(cloudant_config):
                 run("./configure paas", stdout=self.devnull, cwd=src)
             elif os.path.exists(asf_config):
-                run("./configure --disable-fauxton --disable-docs",
-                    stdout=self.devnull, cwd=src)
+                run(
+                    "./configure --disable-fauxton --disable-docs",
+                    stdout=self.devnull,
+                    cwd=src,
+                )
             else:
                 raise Exception("Could not find rebar config file in %s" % src)
         logger("Trying to run make.")
@@ -248,7 +255,7 @@ class Cluster(object):
         assert isinstance(dpath, str), "Directory path must be a string"
         dpath = os.path.abspath(os.path.expanduser(dpath))
         dpath = os.path.realpath(dpath)
-        assert dpath != '/', "Cannot use root, probably a mistake"
+        assert dpath != "/", "Cannot use root, probably a mistake"
         assert os.path.isdir(dpath), "Directory doesn't exist"
         return dpath
 
@@ -280,11 +287,11 @@ class Cluster(object):
             if not ini.has_section(section):
                 ini.add_section(section)
             ini.set(section, key, str(val))
-        with open(fp, 'w') as fh:
+        with open(fp, "w") as fh:
             ini.write(fh)
 
     def _get_source(self, src):
-        if isinstance(src, str) and '://' not in src:
+        if isinstance(src, str) and "://" not in src:
             return self._validate_dir(src)
         dest = os.path.join(self.tmpdir, "src_clone")
         run("rm -rf %s" % dest)
@@ -306,7 +313,7 @@ class Cluster(object):
 
 
 def run(cmd, **kw):
-    skip_check = kw.pop('skip_check', False)
+    skip_check = kw.pop("skip_check", False)
     if LOG_COMMANDS:
         logger("  RUN %s" % cmd)
     if skip_check:
@@ -335,7 +342,7 @@ def _parse_settings(settings):
         return [_parse_setting(s) for s in settings]
     elif isinstance(settings, str):
         settings = settings.strip()
-        return [_parse_setting(s) for s in settings.split(',')]
+        return [_parse_setting(s) for s in settings.split(",")]
     raise ValueError("Invalid settings specification: %s" % settings)
 
 
@@ -343,7 +350,7 @@ def _parse_setting(setting):
     if isinstance(setting, tuple) and len(setting) == 3:
         return setting
     elif isinstance(setting, str):
-        section, val_and_eq = setting.split('.', 1)
-        val, eq = val_and_eq.rsplit('=', 1)
+        section, val_and_eq = setting.split(".", 1)
+        val, eq = val_and_eq.rsplit("=", 1)
         return (section, val, eq)
     raise ValueError("Invalid setting %s" % setting)

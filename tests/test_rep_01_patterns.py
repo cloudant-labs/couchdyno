@@ -5,9 +5,7 @@ import conftest
 pytestmark = pytest.mark.usefixtures("rep")
 
 TEST_ARGS = [
-    (normal, db_per_doc)
-    for normal in [False, True]
-    for db_per_doc in [False, True]
+    (normal, db_per_doc) for normal in [False, True] for db_per_doc in [False, True]
 ]
 
 
@@ -15,8 +13,9 @@ TEST_ARGS = [
 def test_n_to_n_pattern(normal, db_per_doc):
     rep = conftest.get_rep()
     rep.clean()
-    rep.replicate_n_to_n_and_compare(n=10, num=100, normal=normal,
-                                     db_per_doc=db_per_doc)
+    rep.replicate_n_to_n_and_compare(
+        n=10, num=100, normal=normal, db_per_doc=db_per_doc
+    )
 
 
 def test_1_to_n_pattern(rep):

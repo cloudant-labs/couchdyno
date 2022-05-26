@@ -4,14 +4,14 @@ import string
 import argparse
 import datetime
 import urllib.parse
-import couchdb  # pip : CouchDB==1.0
+import couchdb
 from couchdb.design import ViewDefinition
 
 DEFAULT_TOTAL = 1000
 DEFAULT_SIZE = 1000
 DEFAULT_UPDATES = 10
 VERSION = 1
-IDPAT = 'cdyno_%012d'
+IDPAT = "cdyno_%012d"
 HISTORY_MAX = 1000
 FILL_BATCH = 100000
 
@@ -20,21 +20,37 @@ FILL_BATCH = 100000
 
 def setup():
     """
-    Script endpoint for setup. This is for running once and setting up
+    Script endpoint for setup. Run this once to set up
     a database to be used for couchdyno-execute endpoint later.
     """
-    p = _argparser('Setup load test. Creates DB and saves settings.')
-    p.add_argument('-t', '--total', type=int, default=DEFAULT_TOTAL,
-                   help='Number of docs to use')
-    p.add_argument('-s', '--size', type=int, default=DEFAULT_SIZE,
-                   help='Size of document')
-    p.add_argument('-u', '--updates-per-run', type=int,
-                   default=DEFAULT_UPDATES,
-                   help='Update these many docs on each run')
-    p.add_argument('-f', '--force', action="store_true", default=False,
-                   help='Overwrite/reset existing db')
-    p.add_argument('-w', '--wait-to-fill', action="store_true", default=False,
-                   help='Fill database until total number of docs')
+    p = _argparser("Setup load test. Creates DB and saves settings.")
+    p.add_argument(
+        "-t", "--total", type=int, default=DEFAULT_TOTAL, help="Number of docs to use"
+    )
+    p.add_argument(
+        "-s", "--size", type=int, default=DEFAULT_SIZE, help="Size of document"
+    )
+    p.add_argument(
+        "-u",
+        "--updates-per-run",
+        type=int,
+        default=DEFAULT_UPDATES,
+        help="Update these many docs on each run",
+    )
+    p.add_argument(
+        "-f",
+        "--force",
+        action="store_true",
+        default=False,
+        help="Overwrite/reset existing db",
+    )
+    p.add_argument(
+        "-w",
+        "--wait-to-fill",
+        action="store_true",
+        default=False,
+        help="Fill database until total number of docs",
+    )
     args = p.parse_args()
     if not args.force:
         db = _get_db(args.dburl, create=False)
@@ -46,7 +62,7 @@ def setup():
     else:
         db = _get_db(args.dburl, create=True, reset_db=True)
     metadoc = MetaDoc.from_args(args).save(db)
-    print("Saved configuration:")
+    print("dyno_config:")
     metadoc.pprint()
     if args.wait_to_fill:
         print()
@@ -59,7 +75,8 @@ def setup():
             print()
         _update_docs(db, metadoc, updates=left)
         print("Database filled")
-    print("Run 'couchdyno-execute' periodically to start updating documents.")
+    print()
+    print("Run 'couchdyno-execute' periodically to update documents.")
     exit(0)
 
 
@@ -67,13 +84,21 @@ def execute():
     """
     Script endpoint for execute. This should be called peridically.
     """
-    p = _argparser('Execute load test cycle. Can override update-per-run')
-    p.add_argument('-c', '--continuous', type=int, default=0,
-                   help='Run continuously and sleep these many'
-                   'seconds between runs'),
-    p.add_argument('-u', '--updates-per-run', type=int,
-                   default=0,
-                   help='Overrides # of updates for this particular execution')
+    p = _argparser("Execute load test cycle. Can override update-per-run")
+    p.add_argument(
+        "-c",
+        "--continuous",
+        type=int,
+        default=0,
+        help="Run continuously and sleep these many" "seconds between runs",
+    ),
+    p.add_argument(
+        "-u",
+        "--updates-per-run",
+        type=int,
+        default=0,
+        help="Overrides # of updates for this particular execution",
+    )
     args = p.parse_args()
     db = _get_db(args.dburl, create=False)
     if db is None:
@@ -89,7 +114,7 @@ def execute():
         print("Sleeping", args.continuous, "seconds before next run", c)
         time.sleep(args.continuous)
         print()
-    print("New state:")
+    print("new_state:")
     new_metadoc.pprint()
     exit(0)
 
@@ -98,47 +123,61 @@ def info():
     """
     Script endpoint to show setup and run statistics for couchdyno.
     """
-    p = _argparser('Get load test information')
-    p.add_argument('-d', '--daily-census', action="store_true", default=False,
-                   help='Print a daily census (which days had updates)')
-    p.add_argument('-c', '--conflicts', action="store_true", default=False,
-                   help='Print a conflicts report')
+    p = _argparser("Get load test information")
+    p.add_argument(
+        "-d",
+        "--daily-census",
+        action="store_true",
+        default=False,
+        help="Print a daily census (which days had updates)",
+    )
+    p.add_argument(
+        "-c",
+        "--conflicts",
+        action="store_true",
+        default=False,
+        help="Print a conflicts report",
+    )
     args = p.parse_args()
     db = _get_db(args.dburl, create=False)
     if db is None:
         print("ERROR: DB not found. Did you run couchdyno-setup first?")
         exit(1)
     info = db.info()
-    print("DB Info:")
-    print(" . disk_size:", info['disk_size'])
-    print(" . doc_count:", info['doc_count'])
-    print(" . update_seq:", info['update_seq'][:40]+'...')
+    print("db_info:")
+    print("  sizes.file:", info["sizes"]["file"])
+    print("  sizes.external:", info["sizes"]["external"])
+    print("  doc_count:", info["doc_count"])
+    print("  update_seq:", info["update_seq"][:40] + "...")
+    print()
 
     metadoc = MetaDoc().load(db)
-    print("Dyno Info:")
+    print("dyno_info:")
     metadoc.pprint()
-    history = metadoc['history']
-    print("Update History:")
-    print(" . updates", len(history), "/ max kept", HISTORY_MAX)
+    print()
+
+    history = metadoc["history"]
+    print("update_history:")
+    print("  updates", len(history), "/ max kept", HISTORY_MAX)
     if len(history) > 1:
         t0, tl = history[0][0], history[-1][0]
         t = int(tl - t0)
-        t_hours = int(t/3600)
-        t_days = '%0.1f' % (t_hours/24.0)
-        print(" . earliest update (utc):", _ts_to_iso(t0))
-        print(" . last update (utc):", _ts_to_iso(tl))
-        print(" . interval (sec/hours/days):", t, "/", t_hours, "/", t_days)
+        t_hours = int(t / 3600)
+        t_days = "%0.1f" % (t_hours / 24.0)
+        print("  earliest update (utc):", _ts_to_iso(t0))
+        print("  last update (utc):", _ts_to_iso(tl))
+        print("  interval (sec/hours/days):", t, "/", t_hours, "/", t_days)
         max_errors = 0
         rates = []
         for _, dt, _, updates, errors in history:
             if dt > 0:
-                rates.append(updates/float(dt))
+                rates.append(updates / float(dt))
             max_errors = max(max_errors, errors)
         if max_errors:
-            print(" . max errors seen:", max_errors)
+            print("  max errors seen:", max_errors)
         if len(rates) > 0:
             avg_rate = int(sum(rates) / len(rates))
-            print(" . avg doc update rate:", avg_rate, "/ sec")
+            print("  avg doc update rate:", avg_rate, "/ sec")
     if args.conflicts:
         _info_conflicts(db)
     if args.daily_census:
@@ -147,6 +186,7 @@ def info():
 
 
 # Private helper functions
+
 
 def _wait_for_view(db, view, maxwait=100000):
     till = time.time() + maxwait
@@ -158,11 +198,11 @@ def _wait_for_view(db, view, maxwait=100000):
         except couchdb.http.ServerError as ex:
             ex_args = ex.args[0]
             if (
-                    isinstance(ex_args, tuple) and
-                    len(ex_args) == 2 and
-                    ex_args[0] == 500 and
-                    isinstance(ex_args[1], tuple) and
-                    ex_args[1][0] == 'timeout'
+                isinstance(ex_args, tuple)
+                and len(ex_args) == 2
+                and ex_args[0] == 500
+                and isinstance(ex_args[1], tuple)
+                and ex_args[1][0] == "timeout"
             ):
                 time_left = int(till - time.time())
                 if time_left <= 0:
@@ -190,61 +230,72 @@ def _info_days(db):
     view.sync(db)
     _wait_for_view(db, view)
     days = set()
-    for r in db.iterview(view.design+'/'+view.name, batch=100000):
+    for r in db.iterview(view.design + "/" + view.name, batch=100000):
         dinst = datetime.datetime.utcfromtimestamp(int(r.key))
-        days.add(dinst.strftime('%Y-%m-%d'))
+        days.add(dinst.strftime("%Y-%m-%d"))
     print("Doc update census (per day):")
     for d in sorted(days):
         print(" ->", d)
 
 
 def _times_view():
-    return ViewDefinition('couchdyno_times', 'times', '''
+    return ViewDefinition(
+        "couchdyno_times",
+        "times",
+        """
 function(doc) {
       if(doc._id.indexOf("couchdyno_") === 0 &&  doc.ts) {
          emit(doc.ts, null);
       }
 }
-''')
+""",
+    )
 
 
 def _conflicts_view():
-    return ViewDefinition('couchdyno_conflicts', 'conflicts', '''
+    return ViewDefinition(
+        "couchdyno_conflicts",
+        "conflicts",
+        """
 function(doc) {
       if(doc._id.indexOf("couchdyno_") === 0 && doc._conflicts) {
          emit(doc._id, doc._conflicts.length);
       }
 }
-''', reduce_fun='_sum')
+""",
+        reduce_fun="_sum",
+    )
 
 
 class MetaDoc(dict):
     """
     Simple class to represent and manipulate couchdyno metadata doc.
     """
-    ID = 'couchdyno_meta'
+
+    ID = "couchdyno_meta"
 
     def __init__(self, *args, **kwargs):
         super(MetaDoc, self).__init__(*args, **kwargs)
-        self['_id'] = self.ID
+        self["_id"] = self.ID
 
     @classmethod
     def from_args(cls, args):
         """
         Build metadoc from argparser args.
         """
-        return cls(total=args.total,
-                   size=args.size,
-                   updates=min(args.updates_per_run, args.total),
-                   created=int(time.time()),
-                   version=VERSION,
-                   start=0,
-                   last_updates=0,
-                   last_ts=0,
-                   last_dt=0,
-                   last_errors=0,
-                   history=[],  # [[ts,dt,start,updates,errors],...]
-                   )
+        return cls(
+            total=args.total,
+            size=args.size,
+            updates=min(args.updates_per_run, args.total),
+            created=int(time.time()),
+            version=VERSION,
+            start=0,
+            last_updates=0,
+            last_ts=0,
+            last_dt=0,
+            last_errors=0,
+            history=[],  # [[ts,dt,start,updates,errors],...]
+        )
 
     def load(self, db):
         """
@@ -252,8 +303,7 @@ class MetaDoc(dict):
         """
         metadoc = db.get(self.ID)
         if not metadoc:
-            raise Exception("%s missing in %s, run couchdyno-setup?" % (
-                self.ID, db))
+            raise Exception("%s missing in %s, run couchdyno-setup?" % (self.ID, db))
         self.update(metadoc)
         return self
 
@@ -261,13 +311,13 @@ class MetaDoc(dict):
         """
         Update current metadata and save to db.
         """
-        hline = [ts, dt, self['start'], updates, errors]
-        self['start'] = start
-        self['last_ts'] = ts
-        self['last_dt'] = dt
-        self['last_updates'] = updates
-        self['last_errors'] = errors
-        self['history'] = self['history'][-HISTORY_MAX:]+[hline]
+        hline = [ts, dt, self["start"], updates, errors]
+        self["start"] = start
+        self["last_ts"] = ts
+        self["last_dt"] = dt
+        self["last_updates"] = updates
+        self["last_errors"] = errors
+        self["history"] = self["history"][-HISTORY_MAX:] + [hline]
         return self.save(db)
 
     def save(self, db):
@@ -276,13 +326,13 @@ class MetaDoc(dict):
 
     def pprint(self):
         for k, v in sorted(self.items()):
-            if k == '_id' or k == '_rev' or k == 'history':
+            if k == "_id" or k == "_rev" or k == "history":
                 continue
-            elif k == 'last_ts':
+            elif k == "last_ts":
                 v = "%s (%s)" % (v, _ts_to_iso(v))
-            elif k == 'created' and isinstance(v, int):
+            elif k == "created" and isinstance(v, int):
                 v = "%s (%s)" % (v, _ts_to_iso(v))
-            print(" .", str(k), ":", str(v))
+            print("  %s: %s" % (str(k), str(v)))
 
 
 def _get_db(dburl, create=True, reset_db=False):
@@ -290,8 +340,8 @@ def _get_db(dburl, create=True, reset_db=False):
     Get a db handle. Optionally reset / create.
     """
     sres = urllib.parse.urlsplit(dburl)
-    dbname = sres.path.lstrip('/')
-    srv = couchdb.Server(urllib.parse.urlunsplit(sres._replace(path='', query='')))
+    dbname = sres.path.lstrip("/")
+    srv = couchdb.Server(urllib.parse.urlunsplit(sres._replace(path="", query="")))
     srv.version()  # throws if can't connect to server
     if reset_db:
         if dbname in srv:
@@ -344,17 +394,19 @@ def _docrevs(db, *intervals):
     for interval in intervals:
         if not interval:
             continue
-        for r in db.iterview('_all_docs',
-                             startkey=interval[0],
-                             endkey=interval[-1],
-                             inclusive_end=True,
-                             batch=2000):
-            revs[str(r.id)] = str(r.value['rev'])
+        for r in db.iterview(
+            "_all_docs",
+            startkey=interval[0],
+            endkey=interval[-1],
+            inclusive_end=True,
+            batch=2000,
+        ):
+            revs[str(r.id)] = str(r.value["rev"])
     return revs
 
 
 def _random_data(size):
-    return ''.join(random.choice(string.ascii_lowercase) for _ in range(size))
+    return "".join(random.choice(string.ascii_lowercase) for _ in range(size))
 
 
 def _bulk_update(db, docrevs, size, ts, docids):
@@ -367,7 +419,7 @@ def _bulk_update(db, docrevs, size, ts, docids):
         doc = dict(_id=_id, ts=ts, data=_random_data(size))
         _rev = docrevs.get(_id)
         if _rev is not None:
-            doc['_rev'] = _rev
+            doc["_rev"] = _rev
         docs.append(doc)
     res = db.update(docs)
     ok = 0
@@ -390,38 +442,53 @@ def _update_docs(db, metadoc, updates=0):
     meta document to db.
     """
     t0 = time.time()
-    total = metadoc['total']
-    size = metadoc['size']
-    updates = updates if updates else metadoc['updates']
-    start = metadoc['start']
+    total = metadoc["total"]
+    size = metadoc["size"]
+    updates = updates if updates else metadoc["updates"]
+    start = metadoc["start"]
     batchsize = _batch_size(size)
     int1, int2 = _intervals(start, updates, total)
     docint1, docint2 = [IDPAT % i for i in int1], [IDPAT % i for i in int2]
-    print("Total:", total, " size:", size, " @:", start, " updating:", updates)
+    print("before:")
+    print("  total:", total)
+    print("  size:", size)
+    print("  start:", start)
+    print("  updating:", updates)
+    print()
     trev0 = time.time()
     docrevs = _docrevs(db, docint1, docint2)
     trevdt = time.time() - trev0
     revcount = len(docrevs)
     trevrate = int(revcount / trevdt)
     if docrevs:
-        print("%s revs, %.1f sec, @ %s revs/sec" % (revcount, trevdt, trevrate))
+        print("revs:")
+        print("  count:", revcount)
+        print("  dt (sec): %.3f" % trevdt)
+        print("  rate (/sec):", trevrate)
+        print()
     docint1.extend(docint2)
     ok = 0
     for i in range(0, len(docint1), batchsize):
-        docid_batch = docint1[i:i+batchsize]
+        docid_batch = docint1[i : i + batchsize]
         ok += _bulk_update(db, docrevs, size, int(t0), docid_batch)
     errors = updates - ok
     dt = time.time() - t0
     rate = int(updates / dt)
-    print("Updated %s dt: %.3f sec @ %s docs/sec" % (updates, dt, rate))
+    print("after:")
+    print("  updates:", updates)
+    print("  dt (sec): %.3f" % dt)
+    print("  rate (/sec):", rate)
     if errors > 0:
         print("(!)errors:", errors)
-    return metadoc.checkpoint(db,
-                              start=(start + updates) % total,
-                              ts=int(t0),
-                              dt=int(dt),
-                              updates=updates,
-                              errors=errors)
+    print()
+    return metadoc.checkpoint(
+        db,
+        start=(start + updates) % total,
+        ts=int(t0),
+        dt=int(dt),
+        updates=updates,
+        errors=errors,
+    )
 
 
 def _argparser(desc):
@@ -430,5 +497,5 @@ def _argparser(desc):
     script endpoint.
     """
     p = argparse.ArgumentParser(description=desc)
-    p.add_argument('dburl', help='Full DB URL (can include user & pass)')
+    p.add_argument("dburl", help="Full DB URL (can include user & pass)")
     return p

@@ -11,21 +11,21 @@ START_PERIOD = 1
 
 
 QUICK_REPLICATION = [
-    'replicator.start_delay=1',
-    'replicator.start_splay=1',
-    'replicator.cluster_quiet_period=%d' % QUIET_PERIOD,
-    'replicator.cluster_start_period=%d' % START_PERIOD,
+    "replicator.start_delay=1",
+    "replicator.start_splay=1",
+    "replicator.cluster_quiet_period=%d" % QUIET_PERIOD,
+    "replicator.cluster_start_period=%d" % START_PERIOD,
 ]
 
 
 SHORT_SCHEDULER = [
-    'replicator.max_jobs=2',
-    'replicator.max_churn=2',
-    'replicator.interval=10000'
+    "replicator.max_jobs=2",
+    "replicator.max_churn=2",
+    "replicator.interval=10000",
 ]
 
 
-def pytest_cmdline_preparse(args):
+def pytest_load_initial_conftests(args):
     args[:] = unused_args()
 
 
@@ -34,14 +34,13 @@ def is_local():
     return bool(cfg.cluster_repo)
 
 
-skip_if_not_local = pytest.mark.skipif(not is_local(),
-                                       reason="Not a local cluster")
+skip_if_not_local = pytest.mark.skipif(not is_local(), reason="Not a local cluster")
 
 
 def has_replicator_scheduler(rep):
     srv = rep.repsrv
     try:
-        (code, msg, response) = srv.resource('_scheduler').get_json('jobs')
+        (code, msg, response) = srv.resource("_scheduler").get_json("jobs")
         if code == 200:
             return True
     except couchdb.ServerError:

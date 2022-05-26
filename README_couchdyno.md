@@ -1,18 +1,18 @@
 Dyno
 ====
 
-Utility which updates a some number of documents in a database
-during each execution cycle. This can be used to model a database
-which gets continuously updated over days, weeks, months, etc.
+Utility which updates a some number of documents in a database during each
+execution cycle. This can be used to model a database which gets continuously
+updated over days, weeks, months, etc.
 
-This was originally used to test a backup system, but it can also be
-used for a simple db benchmarks or testing.
+This was originally used to test a backup system, but it can also be used for a
+simple db benchmarks or testing.
 
 
- * Pre-requisites: python 2.7, virtualenv, pip.
+ * Pre-requisites: python 3.7+ & pip.
 
  * `./build.sh` :
-   - Creates a local virtualenv environment ./venv
+   - Creates a local venv
    - Installs requirements
    - Installs couchdyno scripts in ./venv/bin
 
@@ -23,81 +23,73 @@ used for a simple db benchmarks or testing.
 
  * `./venv/bin/couchdyno-info DB` to inspect latest stats
 
-Note: DB can include username and password
+Note: DB can include a username and password
 
-couchdyno-setup : sets up a database, and records a few
-parameters in it such as:
+`couchdyno-setup` : sets up a database, and records a few parameters in it such
+as:
 
-  * -t | --total : total number of documents, i.e. how many test
-        documents total should be in the database.
-  * -s | --size : approx size of each document in bytes.
-  * -u | --update-per-run : how many documents to update on each run.
-  * -w | --wait-to-fill : after setup, fill database with documents
-It also takes a -f | --force parameter which will delete and
-re-create the database. By default if a database is already created,
-this script will show an error.
+  * `-t` | `--total` : total (max) number of documents
+  * `-s` | `--size` : approx size of each document in bytes.
+  * `-u` | `--update-per-run` : how many documents to update on each run.
+  * `-w` | `--wait-to-fill` : after setup, fill database with documents It also
 
-couchdyno-execute : reads the parameters from the database and
-updates update-per-run number of documents in it. For ex.: if
-database contains documents 0,1,2,3,4, and update-per-run=3,
+It also takes a `-f` | `--force` parameter which will delete and re-create the
+database. By default if a database is already created, this script will show an
+error.
+
+`couchdyno-execute` : reads the parameters from the database and
+updates `update-per-run` number of documents in it. For ex.: if
+database contains documents 0,1,2,3,4, and `update-per-run=3`,
 on first run it will update [0,1,2], then [3,4,0], then [1,2,3] etc.
 
-couchdyno-execute can optinally run continuously using
--c | --continuous <seconds> option, which will keep running the
-execute code in an infinite loop with <seconds> sleep in between cycles,
+`couchdyno-execute` can optinally run continuously using `-c` | `--continuous`
+<seconds> option, which will keep running the execute code in an infinite loop
+with <seconds> sleep in between cycles.
 
-It also can override the number of documents to be updated per each
-cycles using the -u | --update-per-run parameter.
+To override the number of documents update in each cycle use the `-u` |
+`--update-per-run` parameter.
 
 
 Examples
 --------
 
 ```
-$ ./venv/bin/couchdyno-setup https://btst:{pass}@btst.cloudant.com/ccouchdyno1
-```
+./venv/bin/couchdyno-setup http://adm:pass@localhost:15984/db1
+dyno_config:
+    created : 1653543334 (2022-05-26T05:35:34)
+    last_dt : 0
+    last_errors : 0
+    last_ts : 0 (1970-01-01T00:00:00)
+    last_updates : 0
+    size : 1000
+    start : 0
+    total : 1000
+    updates : 10
+    version : 1
 
-```
-Saved configuration:
- . created : 1447653768 (2015-11-16T06:02:48)
- . history : (0 items)
- . last_dt : 0
- . last_errors : 0
- . last_ts : 0 (1970-01-01T00:00:00)
- . last_updates : 0
- . size : 1000
- . start : 0
- . total : 1000
- . updates : 10
- . version : 1
-run couchdyno-execute to start updating documents.
-```
+./venv/bin/couchdyno-execute http://adm:pass@localhost:15984/db1
+before:
+  total: 1000
+  size: 1000
+  start: 0
+  updating: 10
 
-After this ccouchdyno1 data will contain a single metadata document which
-saves all the parameters (size=1000B, total=1000 docs, on each run
-update 10 of them).
+after:
+  updates: 10
+  dt (sec): 0.078
+  rate (/sec): 128
 
-
-```
-$ ./venv/bin/couchdyno-execute https://btst:{pass}@btst.cloudant.com/ccouchdyno1
-```
-
-```
-Total docs: 1000  doc size: 1000  start: 0
-Updating 10 docs in batches of 2000
-updated 10 docs: dt: 0.101 sec, @ 99 docs/sec
-New state:
- . created : 1447653768 (2015-11-16T06:02:48)
- . history : (1 items)
- . last_dt : 0
- . last_errors : 0
- . last_ts : 1447653777 (2015-11-16T06:02:57)
- . last_updates : 10
- . size : 1000
- . start : 10
- . total : 1000
- . updates : 10
- . version : 1
+new_state:
+  created: 1653544672 (2022-05-26T05:57:52)
+  last_dt: 0
+  last_errors: 0
+  last_ts: 1653544694 (2022-05-26T05:58:14)
+  last_updates: 10
+  size: 1000
+  start: 10
+  total: 1000
+  updates: 10
+  version: 1
 ```
 
 

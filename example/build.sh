@@ -9,18 +9,10 @@ else
     exit 1
 fi
 
-if which virtualenv >/dev/null; then
-    echo "Found virtualenv"
-else
-    echo "Could not find virtualenv. Install virtualenv then try again"
-    exit 1
-fi
-
-
 
 if [ ! -f ./venv/bin/rep ]; then
     rm -rf venv
-    virtualenv venv
+    python3 -m venv venv
     . ./venv/bin/activate
     pip install -q --upgrade pip
     pip install -q -r requirements.txt
