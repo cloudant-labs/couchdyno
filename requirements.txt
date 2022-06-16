@@ -1,4 +1,4 @@
 CouchDB==1.2.0
-ipython==8.3.0
+ipython==8.4.0
 ConfigArgParse==1.5.3
 pytest==7.1.2
