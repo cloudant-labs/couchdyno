@@ -249,6 +249,11 @@ class Rep(object):
         rep_params["create_target"] = _2bool(cfg.create_target)
         rep_params["http_connections"] = int(cfg.http_connections)
         rep_params["retries_per_request"] = int(cfg.retries_per_request)
+        self.num_docs = int(cfg.num_docs)
+        self.num_revs = int(cfg.num_revs)
+        self.num_conflicts = int(cfg.num_conflicts)
+        self.reset_target = bool(cfg.reset_target)
+        self.reset_source = bool(cfg.reset_source)
         if cfg.proxy:
             rep_params["proxy"] = cfg.proxy
         self.rep_params = rep_params
@@ -266,10 +271,7 @@ class Rep(object):
             self.srcsrv = srv
         else:
             self.srcsrv = getsrv(cfg.source_url, timeout=timeout)
-        if not cfg.replicator_url:
-            self.repsrv = srv
-        else:
-            self.repsrv = getsrv(cfg.replicator_url, timeout=timeout)
+        self.repsrv = srv
         self.rdb = getrdb(srv=self.repsrv)
 
     def __repr__(self):
@@ -338,12 +340,16 @@ class Rep(object):
             res += [dict(db[did])]
         return res
 
-    def fill(self, i=1, num=1, rand_ids=False, src_params=None, attachments=None):
+    def fill(
+        self, i, num, revs, conflicts, rand_ids=False, src_params=None, attachments=None
+    ):
         """
         Fill a source db (specified as an index) with num documents.
 
         :param i: Db index
         :param num: How many documents to write
+        :param revs: How many revisions to write
+        :param conflicts: How many conflicted branches to write
         :param rand_ids: Whether to use random ids or not
         :param src_params: Optional dict of extra parameters to add. Can use
           this to generate huge documents or to specify fields to filter on.
@@ -365,6 +371,8 @@ class Rep(object):
         return _updocs(
             db=db,
             num=num,
+            revs=revs,
+            conflicts=conflicts,
             prefix=self.prefix,
             rand_ids=rand_ids,
             attachments=attachments,
@@ -396,16 +404,22 @@ class Rep(object):
         _clean_dbs(prefix=self.prefix + "-", srv=self.srcsrv)
         _clean_dbs(prefix=self.prefix + "-", srv=self.tgtsrv)
 
-    def create_dbs(self, source_range, target_range, reset=False):
+    def create_dbs(
+        self, source_range, target_range, reset_target=False, reset_source=False
+    ):
         """
         Ensure db in source_range and target_range exist. Both source and
         target range are specifed as (low, high) numeric interval. However if
         `create_target` replication parameter is specified, target dbs are not
         created. If reset is True then databases are deleted, then re-created.
         """
-        self._create_range_dbs(srv=self.srcsrv, numrange=source_range, reset=reset)
+        self._create_range_dbs(
+            srv=self.srcsrv, numrange=source_range, reset=reset_source
+        )
         if target_range and not self.rep_params.get("create_target"):
-            self._create_range_dbs(srv=self.tgtsrv, numrange=target_range, reset=reset)
+            self._create_range_dbs(
+                srv=self.tgtsrv, numrange=target_range, reset=reset_target
+            )
 
     def sync_filter(self, filter_ddoc, sr):
         """
@@ -600,13 +614,16 @@ class Rep(object):
         self,
         n=1,
         cycles=1,
-        num=1,
+        num=None,
+        revs=None,
+        conflicts=None,
         normal=False,
         db_per_doc=False,
         rep_params=None,
         src_params=None,
         attachments=None,
-        reset=False,
+        reset_target=None,
+        reset_source=None,
         filter_js=None,
         filter_mango=None,
         filter_doc_ids=None,
@@ -625,6 +642,8 @@ class Rep(object):
         :param n: How many replications to create.
         :param cycles: How many times to repeat.
         :param num: How many documents to write to source.
+        :param revs: How many revisions to write per doc.
+        :param conflicts: How many conflicted branches to write per doc.
         :param normal: If True use normal instead of continuous replications.
           Normal replications delete and re-create replication docs each
           cycle.
@@ -638,8 +657,8 @@ class Rep(object):
           or [('name','contents'), ...]
           or 'contents' which is equivalent to [('att1', 'contents')]
           or int which is equivalent to [('att1', 'x'*int)]
-        :param reset: If True, during setup, delete existing databases first
-          (don't reuse)
+        :param reset_target: If True, during setup delete target dbs.
+        :param reset_source: If True, during setup delete source dbs.
         :param filter_js: True|str specify a user Javascript filter to use.
           Can be True to specify `function(doc, req) {return true;}`
         :param filter_mango: True|dict specify a Mango filter selector object.
@@ -661,34 +680,58 @@ class Rep(object):
             query_params=filter_query_params,
         )
 
+        if num is None:
+            num = self.num_docs
+        if revs is None:
+            revs = self.num_revs
+        if conflicts is None:
+            conflicts = self.num_conflicts
+        if reset_target is None:
+            reset_target = self.reset_target
+        if reset_source is None:
+            reset_source = self.reset_source
+
         def fillcb():
-            self.fill(1, num=num, src_params=src_params, attachments=attachments)
+            self.fill(
+                1,
+                num=num,
+                revs=revs,
+                conflicts=conflicts,
+                src_params=src_params,
+                attachments=attachments,
+            )
 
         return self._setup_and_compare(
-            normal,
-            sr,
-            tr,
-            cycles,
-            num,
-            reset,
-            repmeth,
-            fillcb,
-            db_per_doc,
-            rep_params,
-            filter_params,
+            normal=normal,
+            sr=sr,
+            tr=tr,
+            cycles=cycles,
+            num=num,
+            revs=revs,
+            conflicts=conflicts,
+            reset_target=reset_target,
+            reset_source=reset_source,
+            rep_method=repmeth,
+            fill_callback=fillcb,
+            db_per_doc=db_per_doc,
+            rep_params=rep_params,
+            filter_params=filter_params,
         )
 
     def replicate_n_to_1_and_compare(
         self,
         n=1,
         cycles=1,
-        num=1,
+        num=None,
+        revs=None,
+        conflicts=None,
         normal=False,
         db_per_doc=False,
         rep_params=None,
         src_params=None,
         attachments=None,
-        reset=False,
+        reset_target=None,
+        reset_source=None,
         filter_js=None,
         filter_mango=None,
         filter_doc_ids=None,
@@ -709,6 +752,8 @@ class Rep(object):
         :param n: How many replications to create.
         :param cycles: How many times to repeat.
         :param num: How many documents to write to source.
+        :param revs: How many revisions to write.
+        :param conflicts: How many conflicts to write per document.
         :param normal: If True use normal instead of continuous replications.
            Normal replications delete and re-create replication docs each
            cycle.
@@ -722,8 +767,8 @@ class Rep(object):
           or [('name','contents'), ...]
           or 'contents' which is equivalent to [('att1', 'contents')]
           or int which is equivalent to [('att1', 'x'*int)]
-        :param reset: If True, during setup, delete existing databases first
-          (don't reuse)
+        :param reset_target: If True, during setup, reset target db
+        :param reset_source: If True, during setup, reset source db
         :param filter_js: True|str specify a user Javascript filter to use.
           Can be True to specify `function(doc, req) {return true;}`
         :param filter_mango: True|dict specify a Mango filter selector object.
@@ -745,41 +790,60 @@ class Rep(object):
             query_params=filter_query_params,
         )
 
+        if num is None:
+            num = self.num_docs
+        if revs is None:
+            revs = self.num_revs
+        if conflicts is None:
+            conflicts = self.num_conflicts
+        if reset_target is None:
+            reset_target = self.reset_target
+        if reset_source is None:
+            reset_source = self.reset_source
+
         def fillcb():
             for src in _xrange(sr):
                 self.fill(
                     src,
                     num=num,
+                    revs=revs,
+                    conflicts=conflicts,
                     rand_ids=True,
                     src_params=src_params,
                     attachments=attachments,
                 )
 
         return self._setup_and_compare(
-            normal,
-            sr,
-            tr,
-            cycles,
-            num,
-            reset,
-            repmeth,
-            fillcb,
-            db_per_doc,
-            rep_params,
-            filter_params,
+            normal=normal,
+            sr=sr,
+            tr=tr,
+            cycles=cycles,
+            num=num,
+            revs=revs,
+            conflicts=conflicts,
+            reset_target=reset_target,
+            reset_source=reset_source,
+            rep_method=repmeth,
+            fill_callback=fillcb,
+            db_per_doc=db_per_doc,
+            rep_params=rep_params,
+            filter_params=filter_params,
         )
 
     def replicate_n_to_n_and_compare(
         self,
         n=1,
         cycles=1,
-        num=1,
+        num=None,
+        revs=None,
+        conflicts=None,
         normal=False,
         db_per_doc=False,
         rep_params=None,
         src_params=None,
         attachments=None,
-        reset=False,
+        reset_target=None,
+        reset_source=None,
         filter_js=None,
         filter_mango=None,
         filter_doc_ids=None,
@@ -835,35 +899,59 @@ class Rep(object):
             query_params=filter_query_params,
         )
 
+        if num is None:
+            num = self.num_docs
+        if revs is None:
+            revs = self.num_revs
+        if conflicts is None:
+            conflicts = self.num_conflicts
+        if reset_target is None:
+            reset_target = self.reset_target
+        if reset_source is None:
+            reset_source = self.reset_source
+
         def fillcb():
             for src in _xrange(sr):
-                self.fill(src, num=num, src_params=src_params, attachments=attachments)
+                self.fill(
+                    src,
+                    num=num,
+                    revs=revs,
+                    conflicts=conflicts,
+                    src_params=src_params,
+                    attachments=attachments,
+                )
 
         return self._setup_and_compare(
-            normal,
-            sr,
-            tr,
-            cycles,
-            num,
-            reset,
-            repmeth,
-            fillcb,
-            db_per_doc,
-            rep_params,
-            filter_params,
+            normal=normal,
+            sr=sr,
+            tr=tr,
+            cycles=cycles,
+            num=num,
+            revs=revs,
+            conflicts=conflicts,
+            reset_target=reset_target,
+            reset_source=reset_source,
+            rep_method=repmeth,
+            fill_callback=fillcb,
+            db_per_doc=db_per_doc,
+            rep_params=rep_params,
+            filter_params=filter_params,
         )
 
     def replicate_n_chain_and_compare(
         self,
         n=2,
         cycles=1,
-        num=1,
+        num=None,
+        revs=None,
+        conflicts=None,
         normal=False,
         db_per_doc=False,
         rep_params=None,
         src_params=None,
         attachments=None,
-        reset=False,
+        reset_target=None,
+        reset_source=None,
         filter_js=None,
         filter_mango=None,
         filter_doc_ids=None,
@@ -882,6 +970,8 @@ class Rep(object):
         :param n: How many replications to create.
         :param cycles: How many times to repeat.
         :param num: How many documents to write to source.
+        :param revs: How many revsions to write per doc.
+        :param conflicts: How many conflicted revisions to write.
         :param normal: If True use normal instead of continuous replications.
           Normal replications delete and re-create replication docs each
           cycle.
@@ -895,8 +985,8 @@ class Rep(object):
           or [('name','contents'), ...]
           or 'contents' which is equivalent to [('att1', 'contents')]
           or int which is equivalent to [('att1', 'x'*int)]
-        :param reset: If True, during setup, delete existing databases first
-          (don't reuse)
+        :param reset_target: If True, reset target db
+        :param reset_source: If True, reset source db
         :param filter_js: True|str specify a user Javascript filter to use.
           Can be True to specify `function(doc, req) {return true;}`
         :param filter_mango: True|dict specify a Mango filter selector object.
@@ -920,34 +1010,58 @@ class Rep(object):
             query_params=filter_query_params,
         )
 
+        if num is None:
+            num = self.num_docs
+        if revs is None:
+            revs = self.num_revs
+        if conflicts is None:
+            conflicts = self.num_conflicts
+        if reset_target is None:
+            reset_target = self.reset_target
+        if reset_source is None:
+            reset_source = self.reset_source
+
         def fillcb():
-            self.fill(1, num=num, src_params=src_params, attachments=attachments)
+            self.fill(
+                1,
+                num=num,
+                revs=revs,
+                conflicts=conflicts,
+                src_params=src_params,
+                attachments=attachments,
+            )
 
         return self._setup_and_compare(
-            normal,
-            sr,
-            tr,
-            cycles,
-            num,
-            reset,
-            repmeth,
-            fillcb,
-            db_per_doc,
-            rep_params,
-            filter_params,
+            normal=normal,
+            sr=sr,
+            tr=tr,
+            cycles=cycles,
+            num=num,
+            revs=revs,
+            conflicts=conflicts,
+            reset_target=reset_target,
+            reset_source=reset_source,
+            rep_method=repmeth,
+            fill_callback=fillcb,
+            db_per_doc=db_per_doc,
+            rep_params=rep_params,
+            filter_params=filter_params,
         )
 
     def replicate_all_and_compare(
         self,
         n=1,
         cycles=1,
-        num=1,
+        num=None,
+        revs=None,
+        conflicts=None,
         normal=False,
         db_per_doc=False,
         rep_params=None,
         src_params=None,
         attachments=None,
-        reset=False,
+        reset_target=False,
+        reset_source=False,
         filter_js=None,
         filter_mango=None,
         filter_doc_ids=None,
@@ -966,6 +1080,8 @@ class Rep(object):
         :param n: How many replications to create.
         :param cycles: How many times to repeat.
         :param num: How many documents to write to source.
+        :param revs: How many revision to write per doc.
+        :param conflicts: How many conflicts to write per doc.
         :param normal: If True use normal instead of continuous replications.
           Normal replications delete and re-create replication docs each
           cycle.
@@ -979,8 +1095,8 @@ class Rep(object):
           or [('name','contents'), ...]
           or 'contents' which is equivalent to [('att1', 'contents')]
           or int which is equivalent to [('att1', 'x'*int)]
-        :param reset: If True, during setup, delete existing databases first
-          (don't reuse)
+        :param reset_target: If True, reset target dbs
+        :param reset_source: If True, reset source dbs
         :param filter_js: True|str specify a user Javascript filter to use.
           Can be True to specify `function(doc, req) {return true;}`
         :param filter_mango: True|dict specify a Mango filter selector object.
@@ -1002,21 +1118,42 @@ class Rep(object):
             query_params=filter_query_params,
         )
 
+        if num is None:
+            num = self.num_docs
+        if revs is None:
+            revs = self.num_revs
+        if conflicts is None:
+            conflicts = self.num_conflicts
+        if reset_target is None:
+            reset_target = self.reset_target
+        if reset_source is None:
+            reset_source = self.reset_source
+
         def fillcb():
-            self.fill(1, num=num, src_params=src_params, attachments=attachments)
+            self.fill(
+                1,
+                num=num,
+                revs=revs,
+                conflicts=conflicts,
+                src_params=src_params,
+                attachments=attachments,
+            )
 
         return self._setup_and_compare(
-            normal,
-            sr,
-            tr,
-            cycles,
-            num,
-            reset,
-            repmeth,
-            fillcb,
-            db_per_doc,
-            rep_params,
-            filter_params,
+            normal=normal,
+            sr=sr,
+            tr=tr,
+            cycles=cycles,
+            num=num,
+            revs=revs,
+            conflicts=conflicts,
+            reset_target=reset_target,
+            reset_source=reset_source,
+            rep_method=repmeth,
+            fill_callback=fillcb,
+            db_per_doc=db_per_doc,
+            rep_params=rep_params,
+            filter_params=filter_params,
         )
 
     # Private methods
@@ -1112,7 +1249,10 @@ class Rep(object):
         tr,
         cycles,
         num,
-        reset,
+        revs,
+        conflicts,
+        reset_target,
+        reset_source,
         rep_method,
         fill_callback,
         db_per_doc,
@@ -1144,7 +1284,7 @@ class Rep(object):
             filter_params, rep_params
         )
         self._clean_rep_docs()
-        self.create_dbs(sr, tr, reset=reset)
+        self.create_dbs(sr, tr, reset_target=reset_target, reset_source=reset_source)
         self.sync_filter(filter_ddoc, sr)
         if normal:
             for cycle in range(1, cycles + 1):
@@ -1246,7 +1386,7 @@ class Rep(object):
             "doc prefix:",
             self.prefix,
         )
-        _clean_docs(db=self.rdb, srv=self.repsrv, prefix=self.prefix)
+        _clean_docs(db=self.rdb, srv=self.repsrv, prefix=self.prefix, log=True)
         prefix = self.prefix + "-repdb-"
         logger("cleaning up replicator dbs prefix:", prefix)
         _clean_dbs(prefix=prefix, srv=self.repsrv)
@@ -1325,48 +1465,32 @@ def _xrange(r):
     return range(r[0], r[1] + 1)
 
 
-def _updocs(db, num, prefix, rand_ids, attachments, extra_data):
+def _updocs(db, num, revs, conflicts, prefix, rand_ids, attachments, extra_data):
     """
     Update a set of docs in a database using an incremental
     scheme with a prefix.
     """
     start, end = 1, num
     _clean_docs(prefix=prefix, db=db, startkey=prefix + "-", endkey=prefix + "-zzz")
-    conflicts = set()
-    retry = True
     to_attach = {}
 
-    while retry:
+    def dociter():
+        for i in range(start, end + 1):
+            _id = prefix + "-%07d" % i
+            if rand_ids:
+                _id += "-" + uuid.uuid4().hex
+            for c in range(1, conflicts + 1):
+                doc = extra_data.copy()
+                doc["_id"] = _id
+                revlist = [uuid.uuid4().hex for _ in range(revs)]
+                doc["_revisions"] = {"start": revs, "ids": revlist}
+                if c == 1 and attachments:
+                    to_attach[_id] = "%s-%s" % (revs, revlist[0])
+                yield doc
 
-        def dociter():
-            if conflicts:
-                for _id in conflicts.pop():
-                    doc = extra_data.copy()
-                    yield doc
-            else:
-                for i in range(start, end + 1):
-                    _id = prefix + "-%07d" % i
-                    doc = extra_data.copy()
-                    if rand_ids:
-                        _id += "-" + uuid.uuid4().hex
-                    doc["_id"] = _id
-                    yield doc
-
-        for res in _bulk_updater(db, dociter):
-            if res[0]:
-                doc_id = res[1]
-                doc_rev = res[2]
-                if "conflict" in doc_rev:
-                    conflicts.add(doc_id)
-                    continue
-                if attachments:
-                    to_attach[doc_id] = doc_rev
-            else:
-                logger("ERROR:", db.name, res[1], res[2])
-        if conflicts:
-            logger("WARNING: found", len(conflicts), " conflicts, retrying")
-        else:
-            retry = False
+        for res in _bulk_updater(db, dociter, new_edits=False):
+            logger("ERROR: _bulk_docs", db.name, res)
+            raise Exception(res)
 
     for _id, _rev in to_attach.items():
         _put_attachments(db, _id, _rev, attachments)
@@ -1442,7 +1566,7 @@ def _batchit(it, batchsize=500):
         yield batch
 
 
-def _bulk_updater(db, docit, batchsize=500):
+def _bulk_updater(db, docit, batchsize=500, new_edits=True):
     """
     Bulk updater. Takes a db, a document iterator
     and a batchsize. It batches up documents from the
@@ -1450,8 +1574,12 @@ def _bulk_updater(db, docit, batchsize=500):
     _bulk_docs and yield results one by one as a generator.
     """
     for batch in _batchit(docit, batchsize):
-        for (ok, docid, rev) in db.update(batch):
-            yield str(ok), str(docid), str(rev)
+        if new_edits:
+            for (ok, docid, rev) in db.update(batch):
+                yield str(ok), str(docid), str(rev)
+        else:
+            for error in db.update(batch, dict(new_edits=False)):
+                yield error
 
 
 def _rdb_updater(repsrv, rdb, prefix, dociter, db_per_doc):
@@ -1480,7 +1608,7 @@ def _rdb_and_doc(rdbsrv, prefix, n, doc):
     return doc
 
 
-def _clean_docs(prefix, db, startkey=None, endkey=None, srv=None):
+def _clean_docs(prefix, db, startkey=None, endkey=None, srv=None, log=False):
     db = getdb(db, srv=srv, create=False, reset=False)
     if startkey is not None and endkey is not None:
         all_docs_params = dict(startkey=startkey, endkey=endkey, inclusive_end=True)
@@ -1493,7 +1621,7 @@ def _clean_docs(prefix, db, startkey=None, endkey=None, srv=None):
             yield dict(_id=_id, _rev=_rev, _deleted=True)
 
     cnt = 0
-    for res in _bulk_updater(db, dociter, batchsize=1000):
+    for res in _bulk_updater(db, dociter, batchsize=2000):
         cnt += 1
     return cnt
 

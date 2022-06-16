@@ -99,7 +99,6 @@ configuration:
    create_target = False
    http_connections = 20
    prefix = cdyno
-   replicator_url = None
    server_url = http://adm:pass@localhost:15984
    source_url = None
    target_url = None
