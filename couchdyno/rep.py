@@ -138,11 +138,11 @@ def retry(check=bool, timeout=None, dt=10, log=True):
                     time.sleep(min(2**t, 300))
                     continue
                 t = 1
-                time.sleep(2)
                 if (callable(check) and check(r)) or check == r:
                     return r
-                logger(log, "retrying function", _fname(f))
-                time.sleep(_dt - 2)
+                time.sleep(1)
+                logger(log, "retrying function", _fname(f), _dt)
+                time.sleep(_dt - 1)
 
         return retry
 
@@ -251,9 +251,10 @@ class Rep(object):
         rep_params["retries_per_request"] = int(cfg.retries_per_request)
         self.num_docs = int(cfg.num_docs)
         self.num_revs = int(cfg.num_revs)
-        self.num_conflicts = int(cfg.num_conflicts)
+        self.num_branches = max(1, int(cfg.num_branches))
         self.reset_target = bool(cfg.reset_target)
         self.reset_source = bool(cfg.reset_source)
+        self.skip_rev_check = bool(cfg.skip_rev_check)
         if cfg.proxy:
             rep_params["proxy"] = cfg.proxy
         self.rep_params = rep_params
@@ -341,7 +342,7 @@ class Rep(object):
         return res
 
     def fill(
-        self, i, num, revs, conflicts, rand_ids=False, src_params=None, attachments=None
+        self, i, num, revs, branches, rand_ids=False, src_params=None, attachments=None
     ):
         """
         Fill a source db (specified as an index) with num documents.
@@ -349,7 +350,7 @@ class Rep(object):
         :param i: Db index
         :param num: How many documents to write
         :param revs: How many revisions to write
-        :param conflicts: How many conflicted branches to write
+        :param branches: How many conflicted branches to write
         :param rand_ids: Whether to use random ids or not
         :param src_params: Optional dict of extra parameters to add. Can use
           this to generate huge documents or to specify fields to filter on.
@@ -372,7 +373,7 @@ class Rep(object):
             db=db,
             num=num,
             revs=revs,
-            conflicts=conflicts,
+            branches=branches,
             prefix=self.prefix,
             rand_ids=rand_ids,
             attachments=attachments,
@@ -616,7 +617,7 @@ class Rep(object):
         cycles=1,
         num=None,
         revs=None,
-        conflicts=None,
+        branches=None,
         normal=False,
         db_per_doc=False,
         rep_params=None,
@@ -624,6 +625,7 @@ class Rep(object):
         attachments=None,
         reset_target=None,
         reset_source=None,
+        skip_rev_check=None,
         filter_js=None,
         filter_mango=None,
         filter_doc_ids=None,
@@ -643,7 +645,7 @@ class Rep(object):
         :param cycles: How many times to repeat.
         :param num: How many documents to write to source.
         :param revs: How many revisions to write per doc.
-        :param conflicts: How many conflicted branches to write per doc.
+        :param branches: How many conflicted branches to write per doc.
         :param normal: If True use normal instead of continuous replications.
           Normal replications delete and re-create replication docs each
           cycle.
@@ -684,19 +686,21 @@ class Rep(object):
             num = self.num_docs
         if revs is None:
             revs = self.num_revs
-        if conflicts is None:
-            conflicts = self.num_conflicts
+        if branches is None:
+            branches = self.num_branches
         if reset_target is None:
             reset_target = self.reset_target
         if reset_source is None:
             reset_source = self.reset_source
+        if skip_rev_check is None:
+            skip_rev_check = self.skip_rev_check
 
         def fillcb():
             self.fill(
                 1,
                 num=num,
                 revs=revs,
-                conflicts=conflicts,
+                branches=branches,
                 src_params=src_params,
                 attachments=attachments,
             )
@@ -708,9 +712,10 @@ class Rep(object):
             cycles=cycles,
             num=num,
             revs=revs,
-            conflicts=conflicts,
+            branches=branches,
             reset_target=reset_target,
             reset_source=reset_source,
+            skip_rev_check=skip_rev_check,
             rep_method=repmeth,
             fill_callback=fillcb,
             db_per_doc=db_per_doc,
@@ -724,7 +729,7 @@ class Rep(object):
         cycles=1,
         num=None,
         revs=None,
-        conflicts=None,
+        branches=None,
         normal=False,
         db_per_doc=False,
         rep_params=None,
@@ -732,6 +737,7 @@ class Rep(object):
         attachments=None,
         reset_target=None,
         reset_source=None,
+        skip_rev_check=None,
         filter_js=None,
         filter_mango=None,
         filter_doc_ids=None,
@@ -753,7 +759,7 @@ class Rep(object):
         :param cycles: How many times to repeat.
         :param num: How many documents to write to source.
         :param revs: How many revisions to write.
-        :param conflicts: How many conflicts to write per document.
+        :param branches: How many branches to write per document.
         :param normal: If True use normal instead of continuous replications.
            Normal replications delete and re-create replication docs each
            cycle.
@@ -794,12 +800,14 @@ class Rep(object):
             num = self.num_docs
         if revs is None:
             revs = self.num_revs
-        if conflicts is None:
-            conflicts = self.num_conflicts
+        if branches is None:
+            branches = self.num_branches
         if reset_target is None:
             reset_target = self.reset_target
         if reset_source is None:
             reset_source = self.reset_source
+        if skip_rev_check is None:
+            skip_rev_check = self.skip_rev_check
 
         def fillcb():
             for src in _xrange(sr):
@@ -807,7 +815,7 @@ class Rep(object):
                     src,
                     num=num,
                     revs=revs,
-                    conflicts=conflicts,
+                    branches=branches,
                     rand_ids=True,
                     src_params=src_params,
                     attachments=attachments,
@@ -820,9 +828,10 @@ class Rep(object):
             cycles=cycles,
             num=num,
             revs=revs,
-            conflicts=conflicts,
+            branches=branches,
             reset_target=reset_target,
             reset_source=reset_source,
+            skip_rev_check=skip_rev_check,
             rep_method=repmeth,
             fill_callback=fillcb,
             db_per_doc=db_per_doc,
@@ -836,7 +845,7 @@ class Rep(object):
         cycles=1,
         num=None,
         revs=None,
-        conflicts=None,
+        branches=None,
         normal=False,
         db_per_doc=False,
         rep_params=None,
@@ -844,6 +853,7 @@ class Rep(object):
         attachments=None,
         reset_target=None,
         reset_source=None,
+        skip_rev_check=None,
         filter_js=None,
         filter_mango=None,
         filter_doc_ids=None,
@@ -903,12 +913,14 @@ class Rep(object):
             num = self.num_docs
         if revs is None:
             revs = self.num_revs
-        if conflicts is None:
-            conflicts = self.num_conflicts
+        if branches is None:
+            branches = self.num_branches
         if reset_target is None:
             reset_target = self.reset_target
         if reset_source is None:
             reset_source = self.reset_source
+        if skip_rev_check is None:
+            skip_rev_check = self.skip_rev_check
 
         def fillcb():
             for src in _xrange(sr):
@@ -916,7 +928,7 @@ class Rep(object):
                     src,
                     num=num,
                     revs=revs,
-                    conflicts=conflicts,
+                    branches=branches,
                     src_params=src_params,
                     attachments=attachments,
                 )
@@ -928,9 +940,10 @@ class Rep(object):
             cycles=cycles,
             num=num,
             revs=revs,
-            conflicts=conflicts,
+            branches=branches,
             reset_target=reset_target,
             reset_source=reset_source,
+            skip_rev_check=skip_rev_check,
             rep_method=repmeth,
             fill_callback=fillcb,
             db_per_doc=db_per_doc,
@@ -944,7 +957,7 @@ class Rep(object):
         cycles=1,
         num=None,
         revs=None,
-        conflicts=None,
+        branches=None,
         normal=False,
         db_per_doc=False,
         rep_params=None,
@@ -952,6 +965,7 @@ class Rep(object):
         attachments=None,
         reset_target=None,
         reset_source=None,
+        skip_rev_check=None,
         filter_js=None,
         filter_mango=None,
         filter_doc_ids=None,
@@ -971,7 +985,7 @@ class Rep(object):
         :param cycles: How many times to repeat.
         :param num: How many documents to write to source.
         :param revs: How many revsions to write per doc.
-        :param conflicts: How many conflicted revisions to write.
+        :param branches: How many conflicted revisions to write.
         :param normal: If True use normal instead of continuous replications.
           Normal replications delete and re-create replication docs each
           cycle.
@@ -1014,19 +1028,21 @@ class Rep(object):
             num = self.num_docs
         if revs is None:
             revs = self.num_revs
-        if conflicts is None:
-            conflicts = self.num_conflicts
+        if branches is None:
+            branches = self.num_branches
         if reset_target is None:
             reset_target = self.reset_target
         if reset_source is None:
             reset_source = self.reset_source
+        if skip_rev_check is None:
+            skip_rev_check = self.skip_rev_check
 
         def fillcb():
             self.fill(
                 1,
                 num=num,
                 revs=revs,
-                conflicts=conflicts,
+                branches=branches,
                 src_params=src_params,
                 attachments=attachments,
             )
@@ -1038,9 +1054,10 @@ class Rep(object):
             cycles=cycles,
             num=num,
             revs=revs,
-            conflicts=conflicts,
+            branches=branches,
             reset_target=reset_target,
             reset_source=reset_source,
+            skip_rev_check=skip_rev_check,
             rep_method=repmeth,
             fill_callback=fillcb,
             db_per_doc=db_per_doc,
@@ -1054,7 +1071,7 @@ class Rep(object):
         cycles=1,
         num=None,
         revs=None,
-        conflicts=None,
+        branches=None,
         normal=False,
         db_per_doc=False,
         rep_params=None,
@@ -1081,7 +1098,7 @@ class Rep(object):
         :param cycles: How many times to repeat.
         :param num: How many documents to write to source.
         :param revs: How many revision to write per doc.
-        :param conflicts: How many conflicts to write per doc.
+        :param branches: How many branches to write per doc.
         :param normal: If True use normal instead of continuous replications.
           Normal replications delete and re-create replication docs each
           cycle.
@@ -1122,8 +1139,8 @@ class Rep(object):
             num = self.num_docs
         if revs is None:
             revs = self.num_revs
-        if conflicts is None:
-            conflicts = self.num_conflicts
+        if branches is None:
+            branches = self.num_branches
         if reset_target is None:
             reset_target = self.reset_target
         if reset_source is None:
@@ -1134,7 +1151,7 @@ class Rep(object):
                 1,
                 num=num,
                 revs=revs,
-                conflicts=conflicts,
+                branches=branches,
                 src_params=src_params,
                 attachments=attachments,
             )
@@ -1146,9 +1163,10 @@ class Rep(object):
             cycles=cycles,
             num=num,
             revs=revs,
-            conflicts=conflicts,
+            branches=branches,
             reset_target=reset_target,
             reset_source=reset_source,
+            skip_rev_check=skip_rev_check,
             rep_method=repmeth,
             fill_callback=fillcb,
             db_per_doc=db_per_doc,
@@ -1250,9 +1268,10 @@ class Rep(object):
         cycles,
         num,
         revs,
-        conflicts,
+        branches,
         reset_target,
         reset_source,
+        skip_rev_check,
         rep_method,
         fill_callback,
         db_per_doc,
@@ -1290,19 +1309,33 @@ class Rep(object):
             for cycle in range(1, cycles + 1):
                 if cycles > 1:
                     logger("  ----- cycle", cycle, "------")
+                t0 = time.time()
                 fill_callback()
+                dt_fill = time.time() - t0
+                logger(
+                    "filled %s num docs %s revs %s branches in %.1f sec"
+                    % (num, revs, branches, dt_fill)
+                )
                 self._clean_rep_docs()
+                t0 = time.time()
                 rep_method(
                     sr, tr, normal=True, db_per_doc=db_per_doc, rep_params=rep_params
                 )
-                self.wait_till_all_equal(sr, tr, log=False)
+                logger("replication started")
+                if not skip_rev_check:
+                    self.wait_till_all_equal(sr, tr, log=False)
+                else:
+                    logger("skipping detailed rev check")
                 if not db_per_doc:
+                    logger("waiting to complete replication")
                     _wait_to_complete(
                         rdb=self.rdb,
                         prefix=self.prefix,
                         retry_timeout=self.cycle_timeout,
                         retry_dt=self.cycle_dt,
                     )
+                dt_rep = time.time() - t0
+                logger("replicated in %.1f sec" % dt_rep)
         else:
             rep_method(
                 sr, tr, normal=False, db_per_doc=db_per_doc, rep_params=rep_params
@@ -1465,11 +1498,12 @@ def _xrange(r):
     return range(r[0], r[1] + 1)
 
 
-def _updocs(db, num, revs, conflicts, prefix, rand_ids, attachments, extra_data):
+def _updocs(db, num, revs, branches, prefix, rand_ids, attachments, extra_data):
     """
     Update a set of docs in a database using an incremental
     scheme with a prefix.
     """
+    branches = max(1, branches)
     start, end = 1, num
     _clean_docs(prefix=prefix, db=db, startkey=prefix + "-", endkey=prefix + "-zzz")
     to_attach = {}
@@ -1479,7 +1513,7 @@ def _updocs(db, num, revs, conflicts, prefix, rand_ids, attachments, extra_data)
             _id = prefix + "-%07d" % i
             if rand_ids:
                 _id += "-" + uuid.uuid4().hex
-            for c in range(1, conflicts + 1):
+            for c in range(1, branches + 1):
                 doc = extra_data.copy()
                 doc["_id"] = _id
                 revlist = [uuid.uuid4().hex for _ in range(revs)]
@@ -1488,9 +1522,9 @@ def _updocs(db, num, revs, conflicts, prefix, rand_ids, attachments, extra_data)
                     to_attach[_id] = "%s-%s" % (revs, revlist[0])
                 yield doc
 
-        for res in _bulk_updater(db, dociter, new_edits=False):
-            logger("ERROR: _bulk_docs", db.name, res)
-            raise Exception(res)
+    for res in _bulk_updater(db, dociter, new_edits=False):
+        logger("ERROR: _bulk_docs", db.name, res)
+        raise Exception(res)
 
     for _id, _rev in to_attach.items():
         _put_attachments(db, _id, _rev, attachments)
@@ -1524,7 +1558,7 @@ def _put_attachments(db, doc_id, doc_rev, attachments):
         db.put_attachment(doc, val_str, filename=name_str)
 
 
-def _yield_revs(db, prefix=None, all_docs_params=None, batchsize=500):
+def _yield_revs(db, prefix=None, all_docs_params=None, batchsize=2000):
     """
     Read doc revisions from db (with possible prefix filtering)
     and yield tuples of (_id, rev). Do it in an efficient
@@ -1578,7 +1612,8 @@ def _bulk_updater(db, docit, batchsize=500, new_edits=True):
             for (ok, docid, rev) in db.update(batch):
                 yield str(ok), str(docid), str(rev)
         else:
-            for error in db.update(batch, dict(new_edits=False)):
+            for error in db.update(batch, new_edits=False):
+                logger("XXXXXX", error, "XXXXX", len(batch))
                 yield error
 
 
@@ -1679,7 +1714,7 @@ def _get_incomplete(rdb, prefix):
     return res
 
 
-@retry(lambda x: x == {}, 3600, 10, False)
+@retry(lambda x: x == {}, 3600, 3, False)
 def _wait_to_complete(rdb, prefix):
     return _get_incomplete(rdb=rdb, prefix=prefix)
 
@@ -1698,8 +1733,8 @@ def _contains(db1, db2, prefix):
     """
     # first compare ids only, if those show differences, no reason to bother
     # with getting all the docs
-    s1 = set((_id[0] for _id in _yield_revs(db1, prefix=prefix, batchsize=500)))
-    s2 = set((_id[0] for _id in _yield_revs(db2, prefix=prefix, batchsize=500)))
+    s1 = set((_id[0] for _id in _yield_revs(db1, prefix=prefix, batchsize=1000)))
+    s2 = set((_id[0] for _id in _yield_revs(db2, prefix=prefix, batchsize=1000)))
     sdiff12 = s1 - s2
     if sdiff12:
         return False
@@ -1718,7 +1753,7 @@ def _contains(db1, db2, prefix):
     return True
 
 
-@retry(True, 3600, 10, False)
+@retry(True, 3600, 5, False)
 def _wait_to_propagate(db1, db2, prefix):
     return _contains(db1=db1, db2=db2, prefix=prefix)
 
