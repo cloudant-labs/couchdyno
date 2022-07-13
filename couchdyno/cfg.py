@@ -75,14 +75,21 @@ CFG_DEFAULTS = [
     ),
     (
         "skip_rev_check",
-        False,
+        True,
         "SKIP_REV_CHECK",
         "Verify revisions for normal replications or just wait for job status to be completed",
+    ),
+    (
+        "delete_before_updating",
+        True,
+        "DELETE_BEFORE_UPDATING",
+        "Try to delete all the endopint docs before updating them",
     ),
     ("worker_processes", 4, "REP_WORKER_PROCESSES", "Replication parameter"),
     ("connection_timeout", 30000, "REP_CONNECTION_TIMEOUT", "Replicatoin paramater"),
     ("http_connections", 20, "REP_HTTP_CONNECTIONS", "Replication parameter"),
     ("create_target", False, "REP_CREATE_TARGET", "Replication parameter"),
+    ("use_checkpoints", True, "REP_USE_CHECKPOINTS", "Replication parameter"),
     (
         "retries_per_request",
         10,
@@ -126,7 +133,6 @@ CFG_DEFAULTS = [
         "Comma separated settings which look lik section.key=val",
     ),
 ]
-
 
 _parser = None
 _remaining_args = None

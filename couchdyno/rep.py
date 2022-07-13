@@ -10,6 +10,8 @@ from .cfg import getcfg, cfghelp, logger
 # in case of connection failures
 RETRY_DELAYS = [1, 3, 10, 20, 30, 90]
 
+CYCLE_DT = 5
+
 # Export a few top level functions directly so can use them at module level
 # without having to build a Rep class instance.
 
@@ -247,6 +249,7 @@ class Rep(object):
         rep_params["worker_processes"] = int(cfg.worker_processes)
         rep_params["connection_timeout"] = int(cfg.connection_timeout)
         rep_params["create_target"] = _2bool(cfg.create_target)
+        rep_params["use_checkpoints"] = _2bool(cfg.use_checkpoints)
         rep_params["http_connections"] = int(cfg.http_connections)
         rep_params["retries_per_request"] = int(cfg.retries_per_request)
         self.num_docs = int(cfg.num_docs)
@@ -255,13 +258,14 @@ class Rep(object):
         self.reset_target = bool(cfg.reset_target)
         self.reset_source = bool(cfg.reset_source)
         self.skip_rev_check = bool(cfg.skip_rev_check)
+        self.delete_before_updating = bool(cfg.delete_before_updating)
         if cfg.proxy:
             rep_params["proxy"] = cfg.proxy
         self.rep_params = rep_params
         self.src_params = {}
         self.prefix = str(cfg.prefix)
         self.cycle_timeout = int(cfg.cycle_timeout)
-        self.cycle_dt = 10
+        self.cycle_dt = CYCLE_DT
         timeout = int(cfg.timeout)
         srv = getsrv(cfg.server_url, timeout=timeout)
         if not cfg.target_url:
@@ -342,7 +346,15 @@ class Rep(object):
         return res
 
     def fill(
-        self, i, num, revs, branches, rand_ids=False, src_params=None, attachments=None
+        self,
+        i,
+        num,
+        revs,
+        branches,
+        rand_ids=False,
+        src_params=None,
+        attachments=None,
+        delete_before_updating=False,
     ):
         """
         Fill a source db (specified as an index) with num documents.
@@ -378,6 +390,7 @@ class Rep(object):
             rand_ids=rand_ids,
             attachments=attachments,
             extra_data=extra_data,
+            delete_before_updating=delete_before_updating,
         )
 
     def updoc(self, db, doc):
@@ -626,6 +639,7 @@ class Rep(object):
         reset_target=None,
         reset_source=None,
         skip_rev_check=None,
+        delete_before_updating=None,
         filter_js=None,
         filter_mango=None,
         filter_doc_ids=None,
@@ -694,6 +708,8 @@ class Rep(object):
             reset_source = self.reset_source
         if skip_rev_check is None:
             skip_rev_check = self.skip_rev_check
+        if delete_before_updating is None:
+            delete_before_updating = self.delete_before_updating
 
         def fillcb():
             self.fill(
@@ -703,6 +719,7 @@ class Rep(object):
                 branches=branches,
                 src_params=src_params,
                 attachments=attachments,
+                delete_before_updating=delete_before_updating,
             )
 
         return self._setup_and_compare(
@@ -738,6 +755,7 @@ class Rep(object):
         reset_target=None,
         reset_source=None,
         skip_rev_check=None,
+        delete_before_updating=None,
         filter_js=None,
         filter_mango=None,
         filter_doc_ids=None,
@@ -808,6 +826,8 @@ class Rep(object):
             reset_source = self.reset_source
         if skip_rev_check is None:
             skip_rev_check = self.skip_rev_check
+        if delete_before_updating is None:
+            delete_before_updating = self.delete_before_updating
 
         def fillcb():
             for src in _xrange(sr):
@@ -819,6 +839,7 @@ class Rep(object):
                     rand_ids=True,
                     src_params=src_params,
                     attachments=attachments,
+                    delete_before_updating=delete_before_updating,
                 )
 
         return self._setup_and_compare(
@@ -854,6 +875,7 @@ class Rep(object):
         reset_target=None,
         reset_source=None,
         skip_rev_check=None,
+        delete_before_updating=None,
         filter_js=None,
         filter_mango=None,
         filter_doc_ids=None,
@@ -921,6 +943,8 @@ class Rep(object):
             reset_source = self.reset_source
         if skip_rev_check is None:
             skip_rev_check = self.skip_rev_check
+        if delete_before_updating is None:
+            delete_before_updating = self.delete_before_updating
 
         def fillcb():
             for src in _xrange(sr):
@@ -931,6 +955,7 @@ class Rep(object):
                     branches=branches,
                     src_params=src_params,
                     attachments=attachments,
+                    delete_before_updating=delete_before_updating,
                 )
 
         return self._setup_and_compare(
@@ -966,6 +991,7 @@ class Rep(object):
         reset_target=None,
         reset_source=None,
         skip_rev_check=None,
+        delete_before_updating=None,
         filter_js=None,
         filter_mango=None,
         filter_doc_ids=None,
@@ -1036,6 +1062,8 @@ class Rep(object):
             reset_source = self.reset_source
         if skip_rev_check is None:
             skip_rev_check = self.skip_rev_check
+        if delete_before_updating is None:
+            delete_before_updating = self.delete_before_updating
 
         def fillcb():
             self.fill(
@@ -1079,6 +1107,8 @@ class Rep(object):
         attachments=None,
         reset_target=False,
         reset_source=False,
+        skip_rev_check=None,
+        delete_before_updating=None,
         filter_js=None,
         filter_mango=None,
         filter_doc_ids=None,
@@ -1145,6 +1175,10 @@ class Rep(object):
             reset_target = self.reset_target
         if reset_source is None:
             reset_source = self.reset_source
+        if skip_rev_check is None:
+            skip_rev_check = self.skip_rev_check
+        if delete_before_updating is None:
+            delete_before_updating = self.delete_before_updating
 
         def fillcb():
             self.fill(
@@ -1154,6 +1188,7 @@ class Rep(object):
                 branches=branches,
                 src_params=src_params,
                 attachments=attachments,
+                delete_before_updating=delete_before_updating,
             )
 
         return self._setup_and_compare(
@@ -1302,7 +1337,7 @@ class Rep(object):
         filter_ddoc, rep_params = self._filter_ddoc_and_rep_params(
             filter_params, rep_params
         )
-        self._clean_rep_docs()
+        self._clean_reps()
         self.create_dbs(sr, tr, reset_target=reset_target, reset_source=reset_source)
         self.sync_filter(filter_ddoc, sr)
         if normal:
@@ -1313,10 +1348,10 @@ class Rep(object):
                 fill_callback()
                 dt_fill = time.time() - t0
                 logger(
-                    "filled %s num docs %s revs %s branches in %.1f sec"
+                    "filled %s num docs %s revs %s branches in %.0f sec"
                     % (num, revs, branches, dt_fill)
                 )
-                self._clean_rep_docs()
+                self._clean_reps()
                 t0 = time.time()
                 rep_method(
                     sr, tr, normal=True, db_per_doc=db_per_doc, rep_params=rep_params
@@ -1335,7 +1370,7 @@ class Rep(object):
                         retry_dt=self.cycle_dt,
                     )
                 dt_rep = time.time() - t0
-                logger("replicated in %.1f sec" % dt_rep)
+                logger("replicated in %.0f sec" % dt_rep)
         else:
             rep_method(
                 sr, tr, normal=False, db_per_doc=db_per_doc, rep_params=rep_params
@@ -1412,14 +1447,26 @@ class Rep(object):
         doc.update(_id=did, source=src_dbname, target=tgt_dbname)
         return doc
 
-    def _clean_rep_docs(self):
+    def _clean_reps(self):
         logger(
             "cleaning existing docs from rep db:",
             self.rdb.name,
             "doc prefix:",
             self.prefix,
         )
-        _clean_docs(db=self.rdb, srv=self.repsrv, prefix=self.prefix, log=True)
+        db = getdb(self.rdb, srv=self.repsrv, create=False, reset=False)
+        doc_revs = _yield_revs(db, prefix=self.prefix, all_docs_params=None)
+
+        def dociter():
+            for _id, _rev in doc_revs:
+                if not _id.startswith(self.prefix):
+                    continue
+                yield dict(_id=_id, _rev=_rev, _deleted=True)
+
+        cnt = 0
+        for res in _bulk_updater(db, dociter, batchsize=2000):
+            cnt += 1
+        logger("removed", cnt, "replication docs")
         prefix = self.prefix + "-repdb-"
         logger("cleaning up replicator dbs prefix:", prefix)
         _clean_dbs(prefix=prefix, srv=self.repsrv)
@@ -1498,14 +1545,25 @@ def _xrange(r):
     return range(r[0], r[1] + 1)
 
 
-def _updocs(db, num, revs, branches, prefix, rand_ids, attachments, extra_data):
+def _updocs(
+    db,
+    num,
+    revs,
+    branches,
+    prefix,
+    rand_ids,
+    attachments,
+    extra_data,
+    delete_before_updating,
+):
     """
     Update a set of docs in a database using an incremental
     scheme with a prefix.
     """
     branches = max(1, branches)
     start, end = 1, num
-    _clean_docs(prefix=prefix, db=db, startkey=prefix + "-", endkey=prefix + "-zzz")
+    if delete_before_updating:
+        _clean_docs(prefix=prefix, db=db, startkey=prefix + "-", endkey=prefix + "-zzz")
     to_attach = {}
 
     def dociter():
@@ -1613,7 +1671,6 @@ def _bulk_updater(db, docit, batchsize=500, new_edits=True):
                 yield str(ok), str(docid), str(rev)
         else:
             for error in db.update(batch, new_edits=False):
-                logger("XXXXXX", error, "XXXXX", len(batch))
                 yield error
 
 
