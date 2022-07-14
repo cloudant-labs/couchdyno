@@ -173,8 +173,13 @@ def getcfg():
      * environment variables
      * command-line arguments
     """
-    return parse()[0]
-
+    c = parse()[0]
+    for (k, v) in vars(c).items():
+        if v == 'true' or v == 'True':
+            setattr(c, k, True)
+        if v == 'false' or v == 'False':
+            setattr(c, k, False)
+    return c
 
 def cfghelp():
     if _parser is None:
@@ -193,12 +198,7 @@ def _get_parser():
     p = configargparse.ArgParser(default_config_files=CFG_FILES)
     for (name, dflt, ev, hs) in CFG_DEFAULTS:
         aname = "--" + name
-        if dflt is False:
-            p.add_argument(
-                aname, default=dflt, action="store_true", env_var=ev, help=hs
-            )
-        else:
-            p.add_argument(aname, default=dflt, env_var=ev, help=hs)
+        p.add_argument(aname, default=dflt, env_var=ev, help=hs)
     return p
 
 
