@@ -175,11 +175,12 @@ def getcfg():
     """
     c = parse()[0]
     for (k, v) in vars(c).items():
-        if v == 'true' or v == 'True':
+        if v == "true" or v == "True":
             setattr(c, k, True)
-        if v == 'false' or v == 'False':
+        if v == "false" or v == "False":
             setattr(c, k, False)
     return c
+
 
 def cfghelp():
     if _parser is None:

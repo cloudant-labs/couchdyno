@@ -1482,32 +1482,41 @@ def _interactive():
     etc.) and auto-import this module (rep) and also imports
     couchdb python modules.
     """
+    welcome_msg = """
+Interactive replication toolbox
+-------------------------------
 
-    print("Interactive replication toolbox")
-    print(" rep, rep.getsrv, rep.getrdb and couchdb modules are auto-imported")
-    print(" Assumes cluster runs on http://adm:pass@localhost:15984")
-    print(" Type rep. and press <TAB> to auto-complete available functions")
-    print()
-    print(" Examples:")
-    print()
-    print("  * rep.replicate_1_to_n_and_compare(2, cycles=2)")
-    print("    # replicate 1 source to 2 targets (1->2, 1->3). Fill source")
-    print("    # (add a document) and then wait for all targets to have same")
-    print("    # data. Do it 2 times (cycles=2).")
-    print()
-    print("  * rep.getsrv() # get a CouchDB Server instance")
-    print()
+rep, rep.getsrv, rep.getrdb and couchdb modules are auto-imported
+Assumes cluster runs on http://adm:pass@localhost:15984
+Type rep. and press <TAB> to auto-complete available functions
+
+Examples:
+
+ * rep.replicate_1_to_n_and_compare(2, cycles=2)
+   # replicate 1 source to 2 targets (1->2, 1->3). Fill source
+   # (add a document) and then wait for all targets to have same
+   # data. Do it 2 times (cycles=2).
+
+ * rep.getsrv() # get a CouchDB Server instance
+    """
     if "-h" in sys.argv or "--help" in sys.argv:
         print(cfghelp())
         return
     import IPython
+    from traitlets.config.loader import Config
 
+    c = Config()
+    c.TerminalInteractiveShell.confirm_exit = False
+    c.TerminalInteractiveShell.banner2 = ""
+    c.TerminalInteractiveShell.banner1 = welcome_msg
     auto_imports = (
         "from couchdyno import rep;"
         " from couchdyno.rep import getsrv, getdb, getrdb, Rep;"
         " import couchdb"
     )
-    IPython.start_ipython(argv=["-c", "%s" % auto_imports, "-i"])
+    IPython.start_ipython(
+        argv=["-c", "%s" % auto_imports, "-i", "--profile=couchdyno"], config=c
+    )
 
 
 def _clean_dbs(prefix, srv):
