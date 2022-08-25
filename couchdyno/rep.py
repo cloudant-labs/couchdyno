@@ -1764,9 +1764,12 @@ def _remote_url(srv, dbname):
     if "://" in dbname:
         return dbname
     url = srv.resource.url
-    usr, pwd = srv.resource.credentials
     schema, rest = url.split("://")
-    return "://".join([schema, "%s:%s@%s/%s" % (usr, pwd, rest, dbname)])
+    if srv.resource.credentials is not None:
+        usr, pwd = srv.resource.credentials
+        return "://".join([schema, "%s:%s@%s/%s" % (usr, pwd, rest, dbname)])
+    else:
+        return "://".join([schema, "%s/%s" % (rest, dbname)])
 
 
 def _get_incomplete(rdb, prefix):
