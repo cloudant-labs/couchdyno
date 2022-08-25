@@ -2,6 +2,7 @@ import sys
 import time
 import copy
 import uuid
+import base64
 import couchdb
 
 from .cfg import getcfg, cfghelp, logger
@@ -1586,18 +1587,15 @@ def _updocs(
                 revlist = [uuid.uuid4().hex for _ in range(revs)]
                 doc["_revisions"] = {"start": revs, "ids": revlist}
                 if c == 1 and attachments:
-                    to_attach[_id] = "%s-%s" % (revs, revlist[0])
+                    doc["_attachments"] = _attachments(attachments)
                 yield doc
 
     for res in _bulk_updater(db, dociter, new_edits=False):
         logger("ERROR: _bulk_docs", db.name, res)
         raise Exception(res)
 
-    for _id, _rev in to_attach.items():
-        _put_attachments(db, _id, _rev, attachments)
 
-
-def _put_attachments(db, doc_id, doc_rev, attachments):
+def _attachments(attachments):
     """
     Add attachments to a document. Attachments can be
     specified in various ways:
@@ -1615,14 +1613,16 @@ def _put_attachments(db, doc_id, doc_rev, attachments):
         attachments = [("att1", attachments)]
     if isinstance(attachments, dict):
         attachments = iter(attachments.items())
-    doc = {"_id": doc_id, "_rev": doc_rev}
+    atts_dict = {}
     for (name, val) in attachments:
         name_str = str(name)
         if isinstance(val, int) or isinstance(val, int):
             val_str = "x" * val
         else:
             val_str = str(val)
-        db.put_attachment(doc, val_str, filename=name_str)
+        data = base64.b64encode(val_str.encode("utf-8")).decode("utf-8")
+        atts_dict[name_str] = {"content_type": "application/binary", "data": data}
+    return atts_dict
 
 
 def _yield_revs(db, prefix=None, all_docs_params=None, batchsize=2000):
